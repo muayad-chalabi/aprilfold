@@ -133,7 +133,7 @@ real robot from vision alone:
 
 ```bash
 pip install 'aprilcube[twin]'
-aprilcube twin so101.urdf.xacro --scale 1.5 -o so101_twin
+aprilcube twin so101.urdf.xacro -o so101_twin
 ```
 
 See [Robot Twins](https://github.com/younghyopark/aprilcube/blob/main/docs/usage.md#robot-twins).

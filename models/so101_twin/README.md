@@ -5,19 +5,19 @@
 Every link of the robot is a marker cube, the largest that fits inside the
 link's convex hull, joined to its neighbors by printed joints at the URDF joint
 positions. A camera that tracks the cubes sees every link's pose, and from it
-the joint angles. Scale: 1.5.
+the joint angles. Scale: 1.
 
 ## Links
 
 | Link | Cube | Markers (face tag) | Joint mounts |
 |------|------|--------------------|--------------|
-| `base` | 77.5 mm | +X 1, -X 2, +Y 3, -Y 4, -Z 5 | +Z |
-| `shoulder` | 57.0 mm | +X 6, -X 7, +Y 10, -Z 11 | +Z, -Y |
-| `upper_arm` | 49.0 mm | -X 13, +Y 14, -Y 15, +Z 16 | +X, -Z |
-| `lower_arm` | 34.5 mm | +X 17, -X 18, +Y 20, -Y 21, +Z 22 | -Z |
-| `wrist` | 36.4 mm | +X 23, -X 24, +Y 25, +Z 26 | -Y, -Z |
-| `gripper` | 35.2 mm | +X 27, -X 28, -Y 29, -Z 30 | +Y, +Z |
-| `jaw` | 34.5 mm | +X 31, -X 32, +Y 33, -Y 34, +Z 35 | -Z |
+| `base` | 46.2 mm | +X 1, -X 2, +Y 3, -Y 4, -Z 5 | +Z |
+| `shoulder` | 34.5 mm | +X 6, -X 7, +Y 10, -Z 11 | +Z, -Y |
+| `upper_arm` | 34.5 mm | +X 13, -X 14, +Y 15, -Y 16, +Z 17 | -Z |
+| `lower_arm` | 34.5 mm | +X 18, -X 20, +Y 21, -Y 22 | +Z, -Z |
+| `wrist` | 34.5 mm | +X 23, -X 24, +Y 25, +Z 26 | -Y, -Z |
+| `gripper` | 34.5 mm | +X 27, -X 28, +Y 29, -Y 30, -Z 31 | +Z |
+| `jaw` | 34.5 mm | +X 32, -X 33, +Y 34, -Y 35, +Z 36 | -Z |
 
 ## Joints
 
@@ -63,5 +63,10 @@ link's frame, so a detected pose is the link's pose.
 
 ## Checks
 
-- link 'lower_arm': its hull only fits a 31.9 mm cube; using the 34.5 mm minimum, which sticks out up to 2.8 mm
-- link 'jaw': its hull only fits a 26.9 mm cube; using the 34.5 mm minimum, which sticks out up to 8.4 mm
+- links 'gripper' and 'shoulder' collide (100.3 mm^3) where the robot does not, at gripper=0.11, wrist_roll=2.64, wrist_flex=1.29, elbow_flex=0.98, shoulder_lift=-0.07, shoulder_pan=-1.03
+- link 'shoulder': its hull only fits a 32.8 mm cube; using the 34.5 mm minimum, which sticks out up to 2.9 mm
+- link 'upper_arm': its hull only fits a 30.8 mm cube; using the 34.5 mm minimum, which sticks out up to 4.4 mm
+- link 'lower_arm': its hull only fits a 22.7 mm cube; using the 34.5 mm minimum, which sticks out up to 13.7 mm
+- link 'wrist': its hull only fits a 20.2 mm cube; using the 34.5 mm minimum, which sticks out up to 19.4 mm
+- link 'gripper': its hull only fits a 25.4 mm cube; using the 34.5 mm minimum, which sticks out up to 14.0 mm
+- link 'jaw': its hull only fits a 13.6 mm cube; using the 34.5 mm minimum, which sticks out up to 37.4 mm

@@ -251,14 +251,16 @@ robot.
 
 ```bash
 pip install 'aprilcube[twin]'
-aprilcube twin so101.urdf.xacro --scale 1.5 -o so101_twin
+aprilcube twin so101.urdf.xacro -o so101_twin
 ```
 
 The input is a URDF or a xacro file (expanded with the `xacro` command, so
 source your ROS environment first). Mesh paths may be `package://`,
 `file://` or relative; when a package is not found next to the robot file or
 on `AMENT_PREFIX_PATH`, pass `--package-path name=/path/to/name`. Links with no
-geometry (such as `world`) are folded into their neighbors.
+geometry (such as `world`) are folded into their neighbors. `--last-link LINK`
+ends the twin at that link and leaves out everything beyond it, for example
+`--last-link wrist` for an SO-101 without its gripper.
 
 | Joint | Printed hardware |
 |-------|------------------|
@@ -271,16 +273,23 @@ The joint hardware sits on the URDF joint axis, and the cubes are kept clear of
 it. For each joint the generator searches the knuckle's position along the
 axis, which disc is on top, the bolt direction, and the strut shapes, and keeps
 the layout with the least material where nothing collides anywhere in the
-joint range. Afterwards it poses the whole twin through its joint ranges and
-warns about any pose where two links touch but the robot's own meshes do not.
+joint range, including against the links further up the chain as each of
+their joints moves. Afterwards it poses the whole twin through its joint
+ranges and warns about any pose where two links touch but the robot's own
+meshes do not.
 
 Cubes use the single-color system (see [Single-Color Printing](#single-color-printing)),
 which needs a cube of about 35 mm (4x4 markers) or more. Links whose hull is
 smaller still get a cube of that size, which then sticks out of the link; the
-generator says by how much. `--scale` enlarges the whole twin (joint angles
-are unchanged), which gives small links room for their cube and every joint
-room for its knuckle. The SO-101 builds at `--scale 1.5`; at 1:1 its wrist roll
-has no room for a knuckle, and the error names what blocked it.
+generator says by how much. Such a cube is placed to overhang its link evenly
+and to stay clear of the neighboring knuckles. `--scale` enlarges the whole
+twin (joint angles are unchanged), which gives small links room for their cube
+and every joint room for its knuckle. The SO-101 builds at 1:1, but its wrist,
+gripper and jaw cubes stick out of their links by 15 to 37 mm, so the twin is
+bulkier there than the robot and can touch itself in a few tightly folded
+poses the robot just clears (the generator lists them). At `--scale 1.5` only
+the lower arm and jaw stick out, by a few millimeters. When no layout is
+found, the error names what blocked it.
 
 Output:
 

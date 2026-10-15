@@ -49,6 +49,14 @@ def test_empty_root_is_dropped(tmp_path):
     assert np.allclose(_joint(robot, "j").origin[:3, 3], [200.0, 0.0, 0.0])
 
 
+def test_cut_after_drops_the_links_beyond():
+    robot = twin.cut_after(twin.drop_empty_links(twin.load_robot(DEMO)), "carriage")
+    assert set(robot.links) == {"base", "carriage"}
+    assert [j.name for j in robot.joints] == ["slide"]
+    with pytest.raises(ValueError, match="no link 'gripper'"):
+        twin.cut_after(robot, "gripper")
+
+
 def test_largest_cube_in_a_box():
     import trimesh
 

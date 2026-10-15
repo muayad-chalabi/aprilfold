@@ -7,7 +7,9 @@
   convex hull, joined to its neighbors by printed revolute (friction knuckle
   with hard stops), continuous, prismatic (bar and sleeve with stops) and
   fixed joints. Writes a detector config per link in that link's frame and a
-  `twin.json` with the kinematic chain. Needs the new `twin` extra.
+  `twin.json` with the kinematic chain. `--scale` resizes the twin and
+  `--last-link` stops it at a link (for example before the gripper). Needs the
+  new `twin` extra.
 - Add `--mono` for printers without multi-color support. Each face of a 1x1x1
   cube becomes a black lattice and a white plate printed separately. They snap
   onto a net that prints flat and folds into the cube: barbed legs lock each
