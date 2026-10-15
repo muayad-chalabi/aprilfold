@@ -107,6 +107,22 @@ AprilCube targets are designed for dual-color FDM printing on Bambu Lab printers
 
 The latest generated 3MF files include Bambu Studio 2.x project metadata for compatibility with current Bambu Studio releases.
 
+### Single-color printers
+
+Without a multi-color printer, `--mono` splits each face of a cube into a
+black lattice and a white plate that you print separately. They snap onto a
+net that prints flat and folds into the cube. Larger grids and voxel shapes
+are built from one such cube per voxel, riveted together:
+
+```bash
+pip install 'aprilcube[mono]'
+aprilcube generate --grid 1x1x1 --dict 4x4_50 --tag-size 30 --mono -o models/mono_cube
+```
+
+The output folder's README has print and assembly steps. See
+[Single-Color Printing](https://github.com/younghyopark/aprilcube/blob/main/docs/usage.md#single-color-printing)
+for how the parts lock together.
+
 ## Resources
 
 - [Detailed usage guide](https://github.com/younghyopark/aprilcube/blob/main/docs/usage.md)

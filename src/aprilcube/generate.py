@@ -105,6 +105,18 @@ class AttachmentConfig:
 
 
 @dataclass
+class MonoConfig:
+    """Single-color build: per-face black lattice and white plate on a folding net."""
+    enabled: bool = False
+    inlay_mm: float = 1.6           # black lattice thickness (white pocket depth)
+    base_mm: float = 1.2            # white floor under the lattice
+    panel_mm: float = 3.2           # net panel thickness
+    fit_clearance_mm: float = 0.15  # per side, lattice vs. white pockets
+    slot_clearance_mm: float = 0.2  # per side, legs and tabs in their slots
+    hinge_mm: float = 0.4           # living-hinge thickness on the net's outer face
+
+
+@dataclass
 class CubeConfig:
     grid_x: int           # tags in X dimension
     grid_y: int           # tags in Y dimension
@@ -195,6 +207,7 @@ class GenerationSpec:
     shape_type: str = "cuboid"
     shape: dict[str, Any] | None = None
     attachment: AttachmentConfig | None = None
+    mono: MonoConfig | None = None
     source_path: str | None = None
 
 
@@ -1741,6 +1754,26 @@ def _load_attachment_config(data: dict[str, Any]) -> AttachmentConfig | None:
     )
 
 
+def _load_mono_config(data: dict[str, Any]) -> MonoConfig | None:
+    """Parse ``mono: true`` or a ``mono:`` mapping of MonoConfig fields."""
+    raw = _first_present(data.get("mono"), data.get("single_color"))
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        enabled = _maybe_bool(raw)
+        return MonoConfig(enabled=bool(enabled))
+
+    mapping = _as_mapping(raw, "mono")
+    known = set(MonoConfig.__dataclass_fields__)
+    unknown = sorted(set(mapping) - known)
+    if unknown:
+        raise ValueError(f"Unknown mono setting(s): {', '.join(unknown)}")
+    values: dict[str, Any] = {"enabled": True}
+    for key, value in mapping.items():
+        values[key] = _maybe_bool(value) if key == "enabled" else float(value)
+    return MonoConfig(**values)
+
+
 def _load_yaml_mapping(path: str | os.PathLike[str]) -> dict[str, Any]:
     try:
         import yaml
@@ -1810,6 +1843,7 @@ def load_generation_spec(path: str | os.PathLike[str]) -> GenerationSpec:
         shape_type=shape_type,
         shape=shape,
         attachment=_load_attachment_config(data),
+        mono=_load_mono_config(data),
         source_path=str(path),
     )
 
@@ -1857,6 +1891,12 @@ def apply_cli_overrides(spec: GenerationSpec, args: argparse.Namespace) -> Gener
             attachment.enabled = True
             attachment.connector_stl = args.connector_stl
         spec.attachment = attachment
+    if args.mono is not None or args.mono_clearance is not None:
+        mono = spec.mono or MonoConfig()
+        mono.enabled = True
+        if args.mono_clearance is not None:
+            mono.fit_clearance_mm = args.mono_clearance
+        spec.mono = mono
     return spec
 
 
@@ -2132,6 +2172,49 @@ def render_voxel_thumbnail(
     print(f"Wrote {out_path} ({thumbnail.shape[1]}x{thumbnail.shape[0]})")
 
 
+def _voxel_mono_section(mono: dict) -> str:
+    files = mono["files"]
+    rows = []
+    for m in mono["modules"]:
+        tags = ", ".join(f"{face} {tag}" for face, tag in m["tags"].items())
+        rivets = ", ".join(f"{r['face']} into {r['module']}" for r in m["rivets_into"]) or "-"
+        rows.append(f"| {m['module']} | {tuple(m['voxel'])} | {m['lid']} | {tags} | {rivets} |")
+    skipped = ""
+    if mono["skipped_voxels"]:
+        skipped = (f"\nInterior voxels {', '.join(str(tuple(v)) for v in mono['skipped_voxels'])} "
+                   "show no marker and are left out.\n")
+    return f"""## Single-Color Printing
+
+The target is built from cube modules, one per voxel. Each module is the
+single-color cube: a net that folds into a cube, with a white plate and a
+black lattice on every face that shows a marker. Neighboring modules are
+joined through their shared face by a spacer and a rivet.
+
+![Single-color parts]({files['preview']})
+
+1. Print `{files['black']}` in black and `{files['white']}` in white, visible
+   faces down. Print `{files['net']}` and `{files.get('joints', 'the joints')}` in any color.
+2. Fold each net: both `X` panels, then both `Y` panels (their tabs slide
+   into the `X` panels). Leave the lid open. Panels that face outward are
+   engraved with their tag ID; the matching white plate has the same number.
+3. Place the modules in the order below. For each module, set a spacer on
+   every face listed under *Rivets*, push a rivet from inside the module
+   through the panel and spacer until it clicks once (the spacer now rides
+   on the rivet), slide the module into place, then push each rivet home
+   until it clicks into the neighbor. Close the lid until it latches.
+4. Press each white plate onto the panel with its tag ID and the black
+   lattice into the plate until both legs click.
+
+Every joint is riveted from the module placed later, so loops close: the
+last module slides in with flat faces and is riveted afterwards.
+{skipped}
+| Module | Voxel | Lid | Tags | Rivets |
+|--------|-------|-----|------|--------|
+{chr(10).join(rows)}
+
+"""
+
+
 def write_voxel_readme(config_data: dict, out_dir: str) -> None:
     target = config_data["target"]
     attachment = config_data.get("attachment")
@@ -2148,6 +2231,21 @@ def write_voxel_readme(config_data: dict, out_dir: str) -> None:
         f"| {name} | {count} |"
         for name, count in sorted(face_counts.items())
     ]
+    mono = config_data.get("mono")
+    mono_section = _voxel_mono_section(mono) if mono else ""
+    print_rows = "| `cube.3mf` | Multi-color 3MF target for Bambu Studio |\n"
+    if mono:
+        files = mono["files"]
+        print_rows = "".join(
+            f"| `{files[key]}` | {text} |\n" for key, text in [
+                ("black", "Black lattices, one per marker, print in black"),
+                ("white", "White plates, one per marker, print in white"),
+                ("net", "One folding net per module, any color"),
+                ("joints", "Spacers and rivets that join the modules, any color"),
+                ("assembly", "Assembled target for inspection, not for printing"),
+                ("preview", "Assembled, exploded, joint, and net views"),
+            ] if key in files
+        )
     md = f"""# AprilCube Voxel Target
 
 ![Target preview](thumbnail.png)
@@ -2174,12 +2272,11 @@ def write_voxel_readme(config_data: dict, out_dir: str) -> None:
 |----------------|---------|
 {chr(10).join(face_lines)}
 
-## Files
+{mono_section}## Files
 
 | File | Description |
 |------|-------------|
-| `cube.3mf` | Multi-color 3MF target for Bambu Studio |
-| `config.json` | Detector config with explicit marker corner coordinates |
+{print_rows}| `config.json` | Detector config with explicit marker corner coordinates |
 | `thumbnail.png` | Preview rendering of exposed voxel-face markers |
 | `mujoco/cube.xml` | MuJoCo MJCF model |
 | `mujoco/cube.obj` | Wavefront OBJ mesh with UV-mapped marker faces |
@@ -2224,6 +2321,48 @@ def write_readme(config: CubeConfig, config_data: dict,
     for name, ids in face_tag_map.items():
         face_lines.append(f"| {name} | {', '.join(str(i) for i in ids)} |")
 
+    mono = config_data.get("mono")
+    mono_args = ""
+    print_files = "| `cube.3mf` | Multi-color 3MF for Bambu Studio |"
+    mono_section = ""
+    if mono:
+        files = mono["files"]
+        mono_args = " --mono"
+        if mono["fit_clearance_mm"] != MonoConfig.fit_clearance_mm:
+            mono_args += f" --mono-clearance {mono['fit_clearance_mm']:.4g}"
+        print_files = "\n".join([
+            f"| `{files['black']}` | Six black lattices, print in black |",
+            f"| `{files['white']}` | Six white plates, print in white |",
+            f"| `{files['net']}` | Folding net, any color (hidden inside the cube) |",
+            f"| `{files['assembly']}` | Assembled cube for inspection, not for printing |",
+            f"| `{files['preview']}` | Exploded views, assembled cube, and flat net |",
+        ])
+        mono_section = f"""
+## Single-Color Printing
+
+Each face is a black lattice (the marker's black pixels) pressed into a white
+plate (everything else), mounted on a net that folds into the cube.
+
+![Single-color parts]({files['preview']})
+
+1. Print `{files['black']}` in black and `{files['white']}` in white. Both lie
+   visible face down; a textured plate gives a matte, glare-free finish.
+2. Print `{files['net']}` in any color. PETG is the most forgiving at the
+   thin hinge strips; with PLA, warm the hinges before folding.
+3. Fold the net into a cube in this order: both `X` panels up, then both `Y`
+   panels so their edge tabs slide into the slots in the `X` panels, then
+   the `+Z` lid until its two tabs click into the `Y` panels. The latched
+   net holds itself together. Each panel's outer face is labeled with its
+   face name, for example `+X`.
+4. For each face, set the white plate whose back carries the same label onto
+   its panel, then press the black lattice into the plate until both legs
+   click. A lattice only fits its own plate.
+
+The barbs and the lid latches lock permanently. If the lattice is too tight
+or too loose in its plate,
+regenerate with `--mono-clearance` (current: {mono['fit_clearance_mm']:.4g} mm per side).
+"""
+
     md = f"""# ArUco Cube — {grid_str}
 
 ![Cube preview](thumbnail.png)
@@ -2253,14 +2392,14 @@ def write_readme(config: CubeConfig, config_data: dict,
 
 | File | Description |
 |------|-------------|
-| `cube.3mf` | Multi-color 3MF for Bambu Studio |
+{print_files}
 | `config.json` | Detector config (used by `detect_cube.py`) |
 | `thumbnail.png` | 6-view preview |
 | `mujoco/cube.xml` | MuJoCo MJCF model |
 | `mujoco/cube.obj` | Wavefront OBJ mesh (UV-mapped) |
 | `mujoco/cube.mtl` | OBJ material file |
 | `mujoco/cube_atlas.png` | Texture atlas |
-
+{mono_section}
 ## Config JSON
 
 ```json
@@ -2270,13 +2409,38 @@ def write_readme(config: CubeConfig, config_data: dict,
 ## Regenerate
 
 ```bash
-aprilcube generate --grid {grid_str} --dict {config.dict_name} --tag-size {config.tag_size_mm:.4g} --margin-cell {config.margin_cells} --border-cell {config.border_cells}{attachment_args} -o {os.path.basename(out_dir)}
+aprilcube generate --grid {grid_str} --dict {config.dict_name} --tag-size {config.tag_size_mm:.4g} --margin-cell {config.margin_cells} --border-cell {config.border_cells}{attachment_args}{mono_args} -o {os.path.basename(out_dir)}
 ```
 """
     readme_path = os.path.join(out_dir, "README.md")
     with open(readme_path, "w") as f:
         f.write(md)
     print(f"Wrote {readme_path}")
+
+
+def _cuboid_grid_as_voxels(spec: GenerationSpec, dict_name: str, border_cells: float) -> None:
+    """Turn a multi-tag cuboid into a voxel target with one marker per voxel face.
+
+    Single-color targets are built from cube modules, one per voxel, so each
+    marker gets its own border and markers sit ``2 * border`` cells apart
+    instead of ``margin`` cells.
+    """
+    marker_pixels = TagPatternGenerator(DICT_MAP[dict_name]).marker_pixels
+    if spec.cell_size_mm is not None:
+        cell = float(spec.cell_size_mm)
+    else:
+        cell = float(spec.tag_size_mm if spec.tag_size_mm is not None else 30.0) / marker_pixels
+        spec.tag_size_mm = cell * marker_pixels
+    grid = parse_grid(spec.grid)
+    voxel_size = (marker_pixels + 2 * border_cells) * cell
+    spec.shape_type = "voxel_cuboids"
+    spec.shape = {
+        "type": "voxel_cuboids",
+        "voxel_size_mm": voxel_size,
+        "cuboids": [{"name": "grid", "origin": [0, 0, 0], "size": list(grid)}],
+    }
+    print(f"Single-color {grid[0]}x{grid[1]}x{grid[2]}: built as {voxel_size:.4g} mm cube modules, "
+          f"one marker per voxel face ({2 * border_cells:g} cells between markers)")
 
 
 def generate_voxel_target(
@@ -2342,11 +2506,26 @@ def generate_voxel_target(
                 exposed.append((voxel, face_def))
 
     needed = len(exposed)
-    tag_ids = parse_ids(spec.ids, needed)
+    mono = spec.mono if spec.mono is not None and spec.mono.enabled else None
+    if mono is not None:
+        from aprilcube import mono as mono_build
+        mono_build.require_manifold()
+    if mono is not None and spec.ids is None:
+        # Skip markers whose black pixels would print as loose pieces.
+        tag_ids = mono_build.printable_tag_ids(tag_gen, needed)
+    else:
+        tag_ids = parse_ids(spec.ids, needed)
     if len(tag_ids) < needed:
         raise ValueError(f"need {needed} tag IDs, got {len(tag_ids)}")
     tag_ids = tag_ids[:needed]
     _validate_tag_ids(tag_ids, tag_gen, dict_name)
+    if mono is not None:
+        split = mono_build.unprintable_tag_ids(tag_gen, tag_ids)
+        if split:
+            raise ValueError(
+                f"single-color targets cannot print tag IDs {split}: their black pixels split "
+                "into loose pieces. Omit --ids to pick printable markers automatically."
+            )
 
     xs = [v[0] for v in occupied]
     ys = [v[1] for v in occupied]
@@ -2434,9 +2613,17 @@ def generate_voxel_target(
     dummy_config.y_cells = face_cells * extent[1]
     dummy_config.z_cells = face_cells * extent[2]
 
-    threemf_path = os.path.join(out_dir, "cube.3mf")
-    writer = ThreeMFWriter(dummy_config)
-    writer.write(builder.vertices, builder.triangles, threemf_path)
+    mono_record = None
+    if mono is not None:
+        mono_record = mono_build.write_mono_voxel_target(
+            occupied, voxel_size, tag_size, cell_size, cell_size / layout_scale,
+            {(tuple(r["voxel"]), r["face"]): (r["grid"], r["id"]) for r in marker_records},
+            mono, center_abs, out_dir,
+        )
+    else:
+        threemf_path = os.path.join(out_dir, "cube.3mf")
+        writer = ThreeMFWriter(dummy_config)
+        writer.write(builder.vertices, builder.triangles, threemf_path)
 
     config_markers = [
         {k: v for k, v in record.items() if k != "grid"}
@@ -2465,6 +2652,8 @@ def generate_voxel_target(
     }
     if attachment_record is not None:
         config_data["attachment"] = attachment_record
+    if mono_record is not None:
+        config_data["mono"] = mono_record
     config_path = os.path.join(out_dir, "config.json")
     with open(config_path, "w") as f:
         json.dump(config_data, f, indent=2)
@@ -2551,6 +2740,20 @@ def main():
         default=None,
         help="Connector STL path (default: assets/end_effector_connector.stl)",
     )
+    mono_grp = parser.add_argument_group("single-color printing")
+    mono_grp.add_argument(
+        "--mono",
+        action="store_true",
+        default=None,
+        help="Split each face into a black lattice and a white plate that snap onto a "
+        "folding net, for printers without multi-color support (needs manifold3d)",
+    )
+    mono_grp.add_argument(
+        "--mono-clearance",
+        type=float,
+        default=None,
+        help="Per-side gap in mm between the black lattice and the white pockets (default: 0.15)",
+    )
 
     args = parser.parse_args()
 
@@ -2577,6 +2780,15 @@ def main():
         invert = bool(spec.invert) if spec.invert is not None else False
         if spec.attachment is not None and spec.attachment.enabled:
             _validate_attachment_config(spec.attachment, spec.source_path)
+        mono = spec.mono if spec.mono is not None and spec.mono.enabled else None
+        if mono is not None:
+            if shape_type == "cuboid" and parse_grid(spec.grid or "1x1x1") != (1, 1, 1):
+                _cuboid_grid_as_voxels(spec, dict_name, border_cells)
+                shape_type = spec.shape_type
+            if invert:
+                raise ValueError("single-color (--mono) output does not support --invert")
+            if spec.attachment is not None and spec.attachment.enabled:
+                raise ValueError("single-color (--mono) output does not support the end-effector connector")
 
         if shape_type == "cuboid":
             grid_value = spec.grid or "1x1x1"
@@ -2623,7 +2835,23 @@ def main():
     config.compute()
 
     needed = config.total_tags()
-    tag_ids = parse_ids(spec.ids, needed)
+    tag_gen = TagPatternGenerator(dict_id)
+    if mono is not None:
+        from aprilcube import mono as mono_build
+        try:
+            mono_build.require_manifold()
+        except RuntimeError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            sys.exit(1)
+    if mono is not None and spec.ids is None:
+        # Skip markers whose black pixels would print as loose pieces.
+        try:
+            tag_ids = mono_build.printable_tag_ids(tag_gen, needed)
+        except ValueError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            sys.exit(1)
+    else:
+        tag_ids = parse_ids(spec.ids, needed)
     if len(tag_ids) < needed:
         print(f"Error: need {needed} tag IDs, got {len(tag_ids)}", file=sys.stderr)
         sys.exit(1)
@@ -2631,13 +2859,23 @@ def main():
     config.tag_ids = tag_ids
 
     # Validate
-    tag_gen = TagPatternGenerator(dict_id)
     for tid in tag_ids:
         if tid < 0 or tid >= tag_gen.max_id:
             print(f"Error: tag ID {tid} out of range [0, {tag_gen.max_id}) for {dict_name}", file=sys.stderr)
             sys.exit(1)
     if len(set(tag_ids)) < len(tag_ids):
         print("Warning: duplicate tag IDs", file=sys.stderr)
+    if mono is not None:
+        split = mono_build.unprintable_tag_ids(tag_gen, tag_ids)
+        if split:
+            suggestion = ",".join(str(i) for i in mono_build.printable_tag_ids(tag_gen, needed))
+            print(
+                f"Error: tag ID(s) {', '.join(str(i) for i in split)} have black pixels that "
+                "split into separate pieces and cannot print as one black lattice. "
+                f"Omit --ids or try --ids {suggestion}",
+                file=sys.stderr,
+            )
+            sys.exit(1)
 
     bx, by, bz = config.box_dims
     margin_mm = config.margin_cells * config.cell_size
@@ -2701,9 +2939,17 @@ def main():
     out_dir = output
     os.makedirs(out_dir, exist_ok=True)
 
-    threemf_path = os.path.join(out_dir, "cube.3mf")
-    writer = ThreeMFWriter(config)
-    writer.write(builder.vertices, builder.triangles, threemf_path)
+    mono_record = None
+    if mono is not None:
+        try:
+            mono_record = mono_build.write_mono_target(config, face_grids, face_tag_map, mono, out_dir)
+        except ValueError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            sys.exit(1)
+    else:
+        threemf_path = os.path.join(out_dir, "cube.3mf")
+        writer = ThreeMFWriter(config)
+        writer.write(builder.vertices, builder.triangles, threemf_path)
 
     # Write config.json for the detection pipeline
     grid_str = f"{grid_x}x{grid_y}x{grid_z}"
@@ -2726,6 +2972,8 @@ def main():
     }
     if attachment_record is not None:
         config_data["attachment"] = attachment_record
+    if mono_record is not None:
+        config_data["mono"] = mono_record
     config_path = os.path.join(out_dir, "config.json")
     with open(config_path, "w") as f:
         json.dump(config_data, f, indent=2)

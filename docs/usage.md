@@ -158,7 +158,87 @@ aprilcube generate examples/chair_target.yaml
 # Add the included robot end-effector connector on the +Z face
 aprilcube generate --grid 1x1x1 --dict 4x4_50 --tag-size 30 \
   --end-effector-connector --connector-rod-length 40
+
+# Single-color parts (black + white printed separately, snapped onto a folding net)
+aprilcube generate --grid 1x1x1 --dict 4x4_50 --tag-size 30 --mono
 ```
+
+### Single-Color Printing
+
+`--mono` builds a target for printers without multi-color support. It
+needs the optional `manifold3d` package:
+
+```bash
+pip install 'aprilcube[mono]'
+```
+
+Each face splits into three parts:
+
+| Part | Printed in | Role |
+|------|------------|------|
+| Black lattice | black | The marker's black pixels as one plate, with two barbed legs under the border ring |
+| White plate | white | Covers the face; white pixels stand up and the lattice drops in between them |
+| Net panel | any color | One of six panels joined by living hinges, printed flat and folded into the cube |
+
+The lattice legs pass through the white plate and the panel. Each barb pushes
+aside a flexure beam cut into the panel and hooks behind it, so one snap
+clamps all three layers. The net locks itself: the `Y` panels carry tabs that
+slide into slots inside the `X` panels, and the `+Z` lid carries two tabs that
+snap past a flexure beam inside each `Y` panel. A tab can only enter a panel
+that is already folded, so fold `X`, then `Y`, then `+Z`. Once the lid clicks,
+every panel is trapped. All parts are mitered at 45 degrees, so the cube's edges show no
+seams across a face.
+
+White data cells sit inside the black border ring, so the black part has to
+be the one dropped in. Its black cells must connect edge to edge. When `--ids`
+is omitted, `--mono` skips markers whose black pixels split apart (in
+`4x4_50`, IDs 1-6 instead of 0-5); passing such an ID is an error.
+
+The legs hang under the border ring and must fit inside the folded net, so
+small markers need a wider border. The generator reports the smallest
+`--border-cell` that fits: for example 1.5 cells for a 24 mm `4x4_50` tag or a
+30 mm `apriltag_36h11` tag.
+
+Fine-tune the fit from YAML:
+
+```yaml
+mono:
+  fit_clearance_mm: 0.15   # lattice-to-plate gap per side (also --mono-clearance)
+  slot_clearance_mm: 0.2   # around legs and tabs
+  inlay_mm: 1.6            # lattice thickness
+  base_mm: 1.2             # white floor under the lattice
+  panel_mm: 3.2            # net panel thickness
+  hinge_mm: 0.4            # living-hinge thickness
+```
+
+The detector `config.json` is identical to the multi-color cube's, so the same
+detection code works for both.
+
+#### Larger targets
+
+Grids other than 1x1x1 and voxel shapes (`voxel_grid`, `voxel_cuboids`) are
+built from cube modules, one per voxel. Each module is the single-color cube
+above, with markers on the faces that show. Voxels that show no marker (the
+center of a 3x3x3) are left out.
+
+```bash
+aprilcube generate --grid 3x3x3 --dict apriltag_36h11 --tag-size 30 --border-cell 1.5 --mono
+aprilcube generate ring.yaml        # a voxel_grid spec with mono: true
+```
+
+Neighboring modules share a face. A spacer fills the gap between their panels,
+and a rivet with two barbed legs joins them. The rivet is pushed from inside
+one module, through its panel and the spacer, into the neighbor's panel. It
+uses the same leg slots as the black lattice. Every module's lid opens on a
+face that shows a marker, and each joint is riveted from the module placed
+later. So any shape assembles, loops included: the last module slides in with
+flat faces, and its rivets go in afterwards. The output README lists the
+assembly order.
+
+Because each voxel carries its own border, a `--grid` target built this way
+puts markers `2 x --border-cell` cells apart, not `--margin-cell` apart. Its
+`config.json` lists every marker's corners explicitly, so detection works the
+same way.
 
 ### Standalone Voxel Designer
 
@@ -259,6 +339,8 @@ The repository includes several ready-to-generate voxel examples:
 | `--connector-rod-length` | - | Rod length in mm from the +Z surface to the connector |
 | `--connector-rod-radius` | `10` | Connector rod radius in mm |
 | `--connector-stl` | `assets/end_effector_connector.stl` | Alternate connector STL path |
+| `--mono` | - | Single-color parts (see [Single-Color Printing](#single-color-printing)) |
+| `--mono-clearance` | `0.15` | Per-side gap in mm between the black lattice and the white plate |
 
 Half-cell borders keep markers centered by rendering each logical marker cell
 as a 2x2 surface raster. For example, `--border-cell 0.5` leaves half a
@@ -301,6 +383,10 @@ my_target/
     cube.mtl            # Material file referencing the atlas texture
     cube_atlas.png      # Texture atlas for MuJoCo/OBJ visualization
 ```
+
+With `--mono`, `cube.3mf` is replaced by `print_black.3mf`, `print_white.3mf`,
+`print_net.3mf`, an `assembly_preview.3mf` for inspection, and a
+`mono_preview.png` render.
 
 Cuboid `config.json` example:
 

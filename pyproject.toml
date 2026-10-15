@@ -15,8 +15,12 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+mono = [
+    "manifold3d>=3.0",
+]
 test = [
     "pytest>=8.0",
+    "manifold3d>=3.0",
 ]
 
 [project.scripts]

@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- Add `--mono` for printers without multi-color support. Each face of a 1x1x1
+  cube becomes a black lattice and a white plate printed separately. They snap
+  onto a net that prints flat and folds into the cube: barbed legs lock each
+  face, and the net latches itself shut with tabs and a snap-in lid. Needs the new `mono` extra
+  (`manifold3d`). Default tag IDs skip markers whose black pixels would print
+  as loose pieces. Larger grids and voxel shapes are built as one cube module
+  per voxel, joined by spacers and rivets that work for any shape, loops
+  included.
+
 ## 0.3.1 - 2026-10-03
 
 - Add a printable robot calibration cube in `models/calibration_cube`: the
