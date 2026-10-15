@@ -1,0 +1,38 @@
+<?xml version="1.0"?>
+<!-- Test robot for aprilcube twin: one joint of every supported type. -->
+<robot name="twin_demo">
+  <link name="base">
+    <visual><origin xyz="0 0 0.035"/><geometry><box size="0.16 0.12 0.07"/></geometry></visual>
+  </link>
+  <link name="carriage">
+    <visual><origin xyz="0 0 0.04"/><geometry><box size="0.08 0.08 0.08"/></geometry></visual>
+  </link>
+  <link name="arm">
+    <visual><origin xyz="0.09 0 0"/><geometry><box size="0.18 0.07 0.07"/></geometry></visual>
+  </link>
+  <link name="tool">
+    <visual><origin xyz="0.04 0 0"/><geometry><box size="0.08 0.07 0.07"/></geometry></visual>
+  </link>
+  <link name="wheel">
+    <visual><origin xyz="0.04 0 0"/><geometry><box size="0.08 0.08 0.08"/></geometry></visual>
+  </link>
+
+  <joint name="slide" type="prismatic">
+    <parent link="base"/><child link="carriage"/>
+    <origin xyz="0 0 0.11"/><axis xyz="1 0 0"/>
+    <limit lower="-0.03" upper="0.03" effort="1" velocity="1"/>
+  </joint>
+  <joint name="hinge" type="revolute">
+    <parent link="carriage"/><child link="arm"/>
+    <origin xyz="0 0 0.13"/><axis xyz="0 0 1"/>
+    <limit lower="-1.2" upper="1.2" effort="1" velocity="1"/>
+  </joint>
+  <joint name="mount" type="fixed">
+    <parent link="arm"/><child link="tool"/>
+    <origin xyz="0.24 0 0"/>
+  </joint>
+  <joint name="spin" type="continuous">
+    <parent link="tool"/><child link="wheel"/>
+    <origin xyz="0.14 0 0"/><axis xyz="1 0 0"/>
+  </joint>
+</robot>

@@ -240,6 +240,59 @@ puts markers `2 x --border-cell` cells apart, not `--margin-cell` apart. Its
 `config.json` lists every marker's corners explicitly, so detection works the
 same way.
 
+### Robot Twins
+
+`aprilcube twin` turns a robot description into a printed kinematic twin: every
+link becomes a single-color marker cube, the largest that fits inside the
+link's convex hull, and neighboring cubes are joined by printed joints at the
+URDF joint positions. Move the twin by hand while a camera tracks the cubes,
+and you have every link's pose, and so the joint angles, to drive the real
+robot.
+
+```bash
+pip install 'aprilcube[twin]'
+aprilcube twin so101.urdf.xacro --scale 1.5 -o so101_twin
+```
+
+The input is a URDF or a xacro file (expanded with the `xacro` command, so
+source your ROS environment first). Mesh paths may be `package://`,
+`file://` or relative; when a package is not found next to the robot file or
+on `AMENT_PREFIX_PATH`, pass `--package-path name=/path/to/name`. Links with no
+geometry (such as `world`) are folded into their neighbors.
+
+| Joint | Printed hardware |
+|-------|------------------|
+| `revolute` | Two knuckle discs on a printed bolt with a wing nut; tighten the nut until the joint holds its pose. A pin on the child disc runs in an arc groove in the parent disc that ends at the URDF limits. The bolt's flat keys it to the nut's disc, so moving the joint never loosens the nut. |
+| `continuous` | The same knuckle with a full-circle groove (no stops). |
+| `prismatic` | A square bar on the parent and a sleeve on the child. The bar's fixed end and a pinned cap at its free end stop the sleeve at the URDF limits. |
+| `fixed` | One rigid strut that snaps into both cubes. |
+
+The joint hardware sits on the URDF joint axis, and the cubes are kept clear of
+it. For each joint the generator searches the knuckle's position along the
+axis, which disc is on top, the bolt direction, and the strut shapes, and keeps
+the layout with the least material where nothing collides anywhere in the
+joint range. Afterwards it poses the whole twin through its joint ranges and
+warns about any pose where two links touch but the robot's own meshes do not.
+
+Cubes use the single-color system (see [Single-Color Printing](#single-color-printing)),
+which needs a cube of about 35 mm (4x4 markers) or more. Links whose hull is
+smaller still get a cube of that size, which then sticks out of the link; the
+generator says by how much. `--scale` enlarges the whole twin (joint angles
+are unchanged), which gives small links room for their cube and every joint
+room for its knuckle. The SO-101 builds at `--scale 1.5`; at 1:1 its wrist roll
+has no room for a knuckle, and the error names what blocked it.
+
+Output:
+
+| File | Contents |
+|------|----------|
+| `twin.json` | Kinematic chain (joint origins in mm, axes, limits), each cube's pose in its link frame, hardware, and warnings |
+| `links/<link>/config.json` | Detector config for one link; marker corners are in that link's frame, so a detected pose is the link's pose |
+| `print_black.3mf`, `print_white.3mf`, `print_nets.3mf` | Marker parts and one folding net per link |
+| `print_connectors.3mf` | Mount plates with struts and knuckles or sliders (print with supports) |
+| `print_hardware.3mf` | Bolts, wing nuts, slider caps and pins |
+| `assembly_preview.3mf`, `twin_preview.png` | The assembled twin, for checking |
+
 ### Standalone Voxel Designer
 
 Open the browser-based voxel target designer:

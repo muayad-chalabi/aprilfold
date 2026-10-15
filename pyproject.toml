@@ -18,9 +18,16 @@ dependencies = [
 mono = [
     "manifold3d>=3.0",
 ]
+twin = [
+    "manifold3d>=3.0",
+    "trimesh>=4.0",
+    "scipy>=1.10",
+]
 test = [
     "pytest>=8.0",
     "manifold3d>=3.0",
+    "trimesh>=4.0",
+    "scipy>=1.10",
 ]
 
 [project.scripts]

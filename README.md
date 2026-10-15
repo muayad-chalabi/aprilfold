@@ -123,6 +123,21 @@ The output folder's README has print and assembly steps. See
 [Single-Color Printing](https://github.com/younghyopark/aprilcube/blob/main/docs/usage.md#single-color-printing)
 for how the parts lock together.
 
+### Robot twins
+
+`aprilcube twin` builds a printed kinematic twin of a robot from its URDF or
+xacro: one marker cube per link, as large as the link allows, joined by
+printed revolute, prismatic or fixed joints with hard stops at the URDF
+limits. Tracking the cubes gives every link's pose, for teleoperating the
+real robot from vision alone:
+
+```bash
+pip install 'aprilcube[twin]'
+aprilcube twin so101.urdf.xacro --scale 1.5 -o so101_twin
+```
+
+See [Robot Twins](https://github.com/younghyopark/aprilcube/blob/main/docs/usage.md#robot-twins).
+
 ## Resources
 
 - [Detailed usage guide](https://github.com/younghyopark/aprilcube/blob/main/docs/usage.md)

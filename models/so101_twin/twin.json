@@ -1,0 +1,597 @@
+{
+  "robot": "so101",
+  "source": "so101.urdf.xacro",
+  "scale": 1.5,
+  "units": {
+    "length": "mm",
+    "angle": "rad",
+    "prismatic": "mm"
+  },
+  "root": "base",
+  "links": {
+    "base": {
+      "cube_edge_mm": 77.4955,
+      "cube_pose_mm": [
+        [
+          1.0,
+          0.0,
+          0.0,
+          31.069137
+        ],
+        [
+          0.0,
+          1.0,
+          0.0,
+          16.34055
+        ],
+        [
+          0.0,
+          0.0,
+          1.0,
+          84.252925
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "config": "links/base/config.json",
+      "markers": {
+        "+X": 1,
+        "-X": 2,
+        "+Y": 3,
+        "-Y": 4,
+        "-Z": 5
+      },
+      "mount_faces": [
+        "+Z"
+      ],
+      "hull_overshoot_mm": 0.0
+    },
+    "shoulder": {
+      "cube_edge_mm": 57.0089,
+      "cube_pose_mm": [
+        [
+          1.0,
+          0.0,
+          0.0,
+          -45.668125
+        ],
+        [
+          0.0,
+          1.0,
+          0.0,
+          -0.049333
+        ],
+        [
+          0.0,
+          0.0,
+          1.0,
+          -22.099335
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "config": "links/shoulder/config.json",
+      "markers": {
+        "+X": 6,
+        "-X": 7,
+        "+Y": 10,
+        "-Z": 11
+      },
+      "mount_faces": [
+        "+Z",
+        "-Y"
+      ],
+      "hull_overshoot_mm": 0.0
+    },
+    "upper_arm": {
+      "cube_edge_mm": 48.9673,
+      "cube_pose_mm": [
+        [
+          1.0,
+          0.0,
+          0.0,
+          -89.667451
+        ],
+        [
+          0.0,
+          1.0,
+          0.0,
+          -6.563872
+        ],
+        [
+          0.0,
+          0.0,
+          1.0,
+          12.830675
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "config": "links/upper_arm/config.json",
+      "markers": {
+        "-X": 13,
+        "+Y": 14,
+        "-Y": 15,
+        "+Z": 16
+      },
+      "mount_faces": [
+        "+X",
+        "-Z"
+      ],
+      "hull_overshoot_mm": 0.0
+    },
+    "lower_arm": {
+      "cube_edge_mm": 34.5,
+      "cube_pose_mm": [
+        [
+          1.0,
+          0.0,
+          0.0,
+          -74.592176
+        ],
+        [
+          0.0,
+          1.0,
+          0.0,
+          1.869491
+        ],
+        [
+          0.0,
+          0.0,
+          1.0,
+          56.564323
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "config": "links/lower_arm/config.json",
+      "markers": {
+        "+X": 17,
+        "-X": 18,
+        "+Y": 20,
+        "-Y": 21,
+        "+Z": 22
+      },
+      "mount_faces": [
+        "-Z"
+      ],
+      "hull_overshoot_mm": 2.832
+    },
+    "wrist": {
+      "cube_edge_mm": 36.3784,
+      "cube_pose_mm": [
+        [
+          1.0,
+          0.0,
+          0.0,
+          -0.063761
+        ],
+        [
+          0.0,
+          1.0,
+          0.0,
+          -44.089985
+        ],
+        [
+          0.0,
+          0.0,
+          1.0,
+          9.773018
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "config": "links/wrist/config.json",
+      "markers": {
+        "+X": 23,
+        "-X": 24,
+        "+Y": 25,
+        "+Z": 26
+      },
+      "mount_faces": [
+        "-Y",
+        "-Z"
+      ],
+      "hull_overshoot_mm": 0.0
+    },
+    "gripper": {
+      "cube_edge_mm": 35.1873,
+      "cube_pose_mm": [
+        [
+          1.0,
+          0.0,
+          0.0,
+          -9.035622
+        ],
+        [
+          0.0,
+          1.0,
+          0.0,
+          14.379798
+        ],
+        [
+          0.0,
+          0.0,
+          1.0,
+          -35.59364
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "config": "links/gripper/config.json",
+      "markers": {
+        "+X": 27,
+        "-X": 28,
+        "-Y": 29,
+        "-Z": 30
+      },
+      "mount_faces": [
+        "+Y",
+        "+Z"
+      ],
+      "hull_overshoot_mm": 0.0
+    },
+    "jaw": {
+      "cube_edge_mm": 34.5,
+      "cube_pose_mm": [
+        [
+          1.0,
+          0.0,
+          0.0,
+          -1.687944
+        ],
+        [
+          0.0,
+          1.0,
+          0.0,
+          -7.697096
+        ],
+        [
+          0.0,
+          0.0,
+          1.0,
+          50.663908
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "config": "links/jaw/config.json",
+      "markers": {
+        "+X": 31,
+        "-X": 32,
+        "+Y": 33,
+        "-Y": 34,
+        "+Z": 35
+      },
+      "mount_faces": [
+        "-Z"
+      ],
+      "hull_overshoot_mm": 8.398
+    }
+  },
+  "joints": [
+    {
+      "name": "gripper",
+      "type": "revolute",
+      "parent": "gripper",
+      "child": "jaw",
+      "origin_mm": [
+        [
+          1.0,
+          -0.0,
+          -0.0,
+          30.3
+        ],
+        [
+          -0.0,
+          -4e-06,
+          -1.0,
+          28.2
+        ],
+        [
+          0.0,
+          1.0,
+          -4e-06,
+          -35.1
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "axis": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "lower": -0.174533,
+      "upper": 1.74533,
+      "hardware": "knuckle",
+      "disc_radius_mm": 16.0,
+      "stops": [
+        -0.174533,
+        1.74533
+      ],
+      "parent_face": "+Y",
+      "child_face": "-Z"
+    },
+    {
+      "name": "wrist_roll",
+      "type": "revolute",
+      "parent": "wrist",
+      "child": "gripper",
+      "origin_mm": [
+        [
+          -1.0,
+          0.0,
+          3e-06,
+          0.0
+        ],
+        [
+          3e-06,
+          4e-06,
+          1.0,
+          -91.65
+        ],
+        [
+          0.0,
+          1.0,
+          -4e-06,
+          27.15
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "axis": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "lower": -2.79253,
+      "upper": 2.79253,
+      "hardware": "knuckle",
+      "disc_radius_mm": 16.0,
+      "stops": [
+        -2.79253,
+        2.79253
+      ],
+      "parent_face": "-Y",
+      "child_face": "+Z"
+    },
+    {
+      "name": "wrist_flex",
+      "type": "revolute",
+      "parent": "lower_arm",
+      "child": "wrist",
+      "origin_mm": [
+        [
+          -4e-06,
+          1.0,
+          -0.0,
+          -202.35
+        ],
+        [
+          -1.0,
+          -4e-06,
+          -0.0,
+          7.8
+        ],
+        [
+          -0.0,
+          0.0,
+          1.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "axis": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "lower": -1.65806,
+      "upper": 1.65806,
+      "hardware": "knuckle",
+      "disc_radius_mm": 16.0,
+      "stops": [
+        -1.65806,
+        1.65806
+      ],
+      "parent_face": "-Z",
+      "child_face": "-Z"
+    },
+    {
+      "name": "elbow_flex",
+      "type": "revolute",
+      "parent": "upper_arm",
+      "child": "lower_arm",
+      "origin_mm": [
+        [
+          -4e-06,
+          -1.0,
+          -0.0,
+          -168.855
+        ],
+        [
+          1.0,
+          -4e-06,
+          0.0,
+          -42.0
+        ],
+        [
+          -0.0,
+          -0.0,
+          1.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "axis": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "lower": -1.74533,
+      "upper": 1.5708,
+      "hardware": "knuckle",
+      "disc_radius_mm": 16.0,
+      "stops": [
+        -1.74533,
+        1.5708
+      ],
+      "parent_face": "-Z",
+      "child_face": "-Z"
+    },
+    {
+      "name": "shoulder_lift",
+      "type": "revolute",
+      "parent": "shoulder",
+      "child": "upper_arm",
+      "origin_mm": [
+        [
+          -4e-06,
+          1.0,
+          4e-06,
+          -45.5988
+        ],
+        [
+          -0.0,
+          -4e-06,
+          1.0,
+          -27.4167
+        ],
+        [
+          1.0,
+          4e-06,
+          0.0,
+          -81.3
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "axis": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "lower": -1.74533,
+      "upper": 1.74533,
+      "hardware": "knuckle",
+      "disc_radius_mm": 16.0,
+      "stops": [
+        -1.74533,
+        1.74533
+      ],
+      "parent_face": "-Y",
+      "child_face": "+X"
+    },
+    {
+      "name": "shoulder_pan",
+      "type": "revolute",
+      "parent": "base",
+      "child": "shoulder",
+      "origin_mm": [
+        [
+          -4e-06,
+          1.0,
+          -3e-06,
+          31.18635
+        ],
+        [
+          1.0,
+          4e-06,
+          -0.0,
+          -34.61175
+        ],
+        [
+          -0.0,
+          -3e-06,
+          -1.0,
+          142.32255
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "axis": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "lower": -1.91986,
+      "upper": 1.91986,
+      "hardware": "knuckle",
+      "disc_radius_mm": 16.0,
+      "stops": [
+        -1.91986,
+        1.91986
+      ],
+      "parent_face": "+Z",
+      "child_face": "+Z"
+    }
+  ],
+  "files": {
+    "black": "print_black.3mf",
+    "white": "print_white.3mf",
+    "nets": "print_nets.3mf",
+    "connectors": "print_connectors.3mf",
+    "hardware": "print_hardware.3mf",
+    "assembly": "assembly_preview.3mf",
+    "preview": "twin_preview.png"
+  },
+  "warnings": [
+    "link 'lower_arm': its hull only fits a 31.9 mm cube; using the 34.5 mm minimum, which sticks out up to 2.8 mm",
+    "link 'jaw': its hull only fits a 26.9 mm cube; using the 34.5 mm minimum, which sticks out up to 8.4 mm"
+  ]
+}
