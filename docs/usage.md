@@ -257,10 +257,24 @@ aprilcube twin so101.urdf.xacro -o so101_twin
 The input is a URDF or a xacro file (expanded with the `xacro` command, so
 source your ROS environment first). Mesh paths may be `package://`,
 `file://` or relative; when a package is not found next to the robot file or
-on `AMENT_PREFIX_PATH`, pass `--package-path name=/path/to/name`. Links with no
-geometry (such as `world`) are folded into their neighbors. `--last-link LINK`
-ends the twin at that link and leaves out everything beyond it, for example
-`--last-link wrist` for an SO-101 without its gripper.
+on `AMENT_PREFIX_PATH`, pass `--package-path name=/path/to/name`. For a robot
+file copied away from its meshes, `--mesh-dir DIR` searches DIR for each mesh
+by its trailing path. Links whose visual meshes cannot be loaded (for example
+`.dae` without `pycollada`) use their collision geometry.
+
+Before planning, the robot is reduced to what a twin needs:
+
+- **Rigid groups.** Links joined by `fixed` joints move as one body and get one
+  cube (a servo bolted to its bracket, a gripper flange, a ground plate). Pass
+  `--keep-fixed` to give each its own cube, joined by a printed strut. Links
+  with no geometry (such as `world`) are always folded away.
+- **Mimic joints.** Joints that `<mimic>` another move together with it, so the
+  twin builds one joint of each group, the one whose link is largest, and
+  leaves out the others with their links. `twin.json` lists them under
+  `mimic_joints` as `value = multiplier * kept joint + offset`. Pass
+  `--keep-mimic` to build them as independent joints.
+- **`--last-link LINK`** ends the twin at that link and leaves out everything
+  beyond it, for example `--last-link wrist` for an SO-101 without its gripper.
 
 | Joint | Printed hardware |
 |-------|------------------|
@@ -271,25 +285,35 @@ ends the twin at that link and leaves out everything beyond it, for example
 
 The joint hardware sits on the URDF joint axis, and the cubes are kept clear of
 it. For each joint the generator searches the knuckle's position along the
-axis, which disc is on top, the bolt direction, and the strut shapes, and keeps
-the layout with the least material where nothing collides anywhere in the
-joint range, including against the links further up the chain as each of
-their joints moves. Afterwards it poses the whole twin through its joint
-ranges and warns about any pose where two links touch but the robot's own
-meshes do not.
+axis, which disc is on top, the bolt direction, and the strut shapes (straight,
+bent, around the side of a cube, or swung around the axis to pass a
+neighbor), and keeps the layout with the least material where nothing
+collides anywhere in the joint range. It also keeps clear of the slot where
+the next joint's knuckle will go, and of the links further up the chain as
+each of their joints moves; when that leaves no layout, it settles for being
+clear of the parent's own joint. Afterwards it poses the whole twin through
+its joint ranges and warns about any pose where two links touch but the
+robot's own meshes do not.
 
 Cubes use the single-color system (see [Single-Color Printing](#single-color-printing)),
 which needs a cube of about 35 mm (4x4 markers) or more. Links whose hull is
 smaller still get a cube of that size, which then sticks out of the link; the
 generator says by how much. Such a cube is placed to overhang its link evenly
-and to stay clear of the neighboring knuckles. `--scale` enlarges the whole
-twin (joint angles are unchanged), which gives small links room for their cube
-and every joint room for its knuckle. The SO-101 builds at 1:1, but its wrist,
-gripper and jaw cubes stick out of their links by 15 to 37 mm, so the twin is
-bulkier there than the robot and can touch itself in a few tightly folded
-poses the robot just clears (the generator lists them). At `--scale 1.5` only
-the lower arm and jaw stick out, by a few millimeters. When no layout is
-found, the error names what blocked it.
+and to stay clear of the knuckles and of the other cubes. `--scale` enlarges
+the whole twin (joint angles are unchanged), which gives small links room for
+their cube and every joint room for its knuckle. If a joint finds no layout,
+the cubes are planned again with that joint's room kept strictly clear before
+the generator gives up and names what blocked it.
+
+How small a robot can get depends on how its joint spacing compares with the
+35 mm cubes. Tested robots:
+
+| Robot | Joints | Builds at | Notes |
+|-------|--------|-----------|-------|
+| SO-101 arm | 6 revolute | 1:1 | wrist, gripper and jaw cubes stick out of their links |
+| ElRobot arm | 7 revolute, gripper slider | 1:1 | servos merge into their brackets; the gripper gear and second jaw follow the first jaw (mimic) |
+| KUKA iiwa 14 | 7 revolute | 0.3 and up | at 0.2 its joints are about 40 mm apart and no layout is found |
+| Microduck biped | 15 revolute | 2 | at 1:1 the 16 cubes are larger than most of its links and collide |
 
 Output:
 

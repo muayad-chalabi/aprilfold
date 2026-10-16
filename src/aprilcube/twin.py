@@ -35,6 +35,7 @@ class Joint:
     axis: np.ndarray          # unit vector in the joint frame
     lower: float = 0.0        # rad, or mm for prismatic
     upper: float = 0.0
+    mimic: tuple[str, float, float] | None = None   # (joint, multiplier, offset): value = m * that joint + o
 
     @property
     def moves(self) -> bool:
@@ -45,6 +46,7 @@ class Joint:
 class Link:
     name: str
     meshes: list = field(default_factory=list)   # trimesh.Trimesh in the link frame (mm)
+    merged: list[str] = field(default_factory=list)   # links joined to this one by fixed joints
 
     @property
     def has_geometry(self) -> bool:
@@ -56,6 +58,7 @@ class Robot:
     name: str
     links: dict[str, Link]
     joints: list[Joint]
+    mimics: list[Joint] = field(default_factory=list)   # joints left out because they follow another
 
     @property
     def root(self) -> str:
@@ -133,12 +136,20 @@ def expand_xacro(path: Path) -> str:
     return result.stdout
 
 
-def resolve_mesh_path(uri: str, base_dir: Path, package_paths: dict[str, Path]) -> Path:
-    """Resolve ``package://``, ``file://`` and relative mesh URIs."""
+def resolve_mesh_path(uri: str, base_dir: Path, package_paths: dict[str, Path],
+                      mesh_dirs: list[Path] = ()) -> Path:
+    """Resolve ``package://``, ``file://`` and relative mesh URIs.
+
+    When the file is not where the URI says (a URDF copied without its
+    meshes), each of ``mesh_dirs`` is searched for the URI's trailing path:
+    ``a/b/c.stl`` is tried as ``dir/a/b/c.stl``, ``dir/b/c.stl`` and ``dir/c.stl``.
+    """
+    tail = uri.split("://", 1)[-1]
+    found = None
     if uri.startswith("file://"):
-        return Path(uri[len("file://"):])
-    if uri.startswith("package://"):
-        package, _, rest = uri[len("package://"):].partition("/")
+        found = Path(tail)
+    elif uri.startswith("package://"):
+        package, _, rest = tail.partition("/")
         candidates = []
         if package in package_paths:
             candidates.append(Path(package_paths[package]))
@@ -149,18 +160,29 @@ def resolve_mesh_path(uri: str, base_dir: Path, package_paths: dict[str, Path]) 
         for prefix in os.environ.get("AMENT_PREFIX_PATH", "").split(os.pathsep):
             if prefix:
                 candidates.append(Path(prefix) / "share" / package)
-        for root in candidates:
-            if (root / rest).exists():
-                return root / rest
-        raise FileNotFoundError(
-            f"cannot find package '{package}' for {uri}; pass --package-path {package}=/path/to/{package}"
-        )
-    path = Path(uri)
-    return path if path.is_absolute() else base_dir / path
+        found = next((root / rest for root in candidates if (root / rest).exists()), None)
+        if found is None and not mesh_dirs:
+            raise FileNotFoundError(
+                f"cannot find package '{package}' for {uri}; pass --package-path {package}=/path/to/{package} "
+                "or --mesh-dir DIR"
+            )
+    else:
+        found = Path(uri) if Path(uri).is_absolute() else base_dir / uri
+    if found is not None and found.exists():
+        return found
+    parts = [part for part in Path(tail).parts if part not in ("/", "..", ".")]
+    for directory in mesh_dirs:
+        for k in range(len(parts)):
+            candidate = Path(directory).expanduser() / Path(*parts[k:])
+            if candidate.exists():
+                return candidate
+    if mesh_dirs:
+        raise FileNotFoundError(f"mesh {uri} not found next to the robot file or in --mesh-dir")
+    return found
 
 
 def load_robot(path: str | os.PathLike, package_paths: dict[str, Path] | None = None,
-               scale: float = 1.0) -> Robot:
+               scale: float = 1.0, mesh_dirs: list[Path] = ()) -> Robot:
     """Load a URDF (or xacro) with meshes, in millimeters times ``scale``."""
     import trimesh
 
@@ -170,17 +192,15 @@ def load_robot(path: str | os.PathLike, package_paths: dict[str, Path] | None = 
     mm = 1000.0 * scale
     package_paths = package_paths or {}
 
-    links: dict[str, Link] = {}
-    for elem in root.findall("link"):
-        link = Link(elem.get("name"))
-        geoms = elem.findall("visual") or elem.findall("collision")
+    def shapes(geoms):
+        meshes = []
         for geom in geoms:
             g = geom.find("geometry")
             if g is None or len(g) == 0:
                 continue
             shape = g[0]
             if shape.tag == "mesh":
-                mesh_path = resolve_mesh_path(shape.get("filename"), path.parent, package_paths)
+                mesh_path = resolve_mesh_path(shape.get("filename"), path.parent, package_paths, mesh_dirs)
                 mesh = trimesh.load(mesh_path, force="mesh")
                 mesh.apply_scale(np.array([float(v) for v in shape.get("scale", "1 1 1").split()]))
             elif shape.tag == "box":
@@ -193,7 +213,21 @@ def load_robot(path: str | os.PathLike, package_paths: dict[str, Path] | None = 
                 continue
             mesh.apply_scale(mm)
             mesh.apply_transform(_origin(geom.find("origin"), mm))
-            link.meshes.append(mesh)
+            meshes.append(mesh)
+        return meshes
+
+    links: dict[str, Link] = {}
+    for elem in root.findall("link"):
+        link = Link(elem.get("name"))
+        try:
+            link.meshes = shapes(elem.findall("visual"))
+        except FileNotFoundError:
+            raise
+        except Exception as exc:   # e.g. .dae visuals without pycollada: the collision shapes will do
+            if not elem.findall("collision"):
+                raise RuntimeError(f"link '{link.name}': cannot load its visual meshes ({exc})") from exc
+        if not link.meshes:
+            link.meshes = shapes(elem.findall("collision"))
         links[link.name] = link
 
     joints = []
@@ -209,54 +243,117 @@ def load_robot(path: str | os.PathLike, package_paths: dict[str, Path] | None = 
         upper = float(limit.get("upper", 0)) if limit is not None else 0.0
         if jtype == "prismatic":
             lower, upper = lower * mm, upper * mm
+        mimic = elem.find("mimic")
+        if mimic is not None:
+            mimic = (mimic.get("joint"), float(mimic.get("multiplier", 1)), float(mimic.get("offset", 0)))
         joints.append(Joint(
             name=elem.get("name"), type=jtype,
             parent=elem.find("parent").get("link"), child=elem.find("child").get("link"),
             origin=_origin(elem.find("origin"), mm),
-            axis=axis / np.linalg.norm(axis), lower=lower, upper=upper,
+            axis=axis / np.linalg.norm(axis), lower=lower, upper=upper, mimic=mimic,
         ))
+    # Mimic multipliers in twin units (mm for prismatic joints, rad otherwise).
+    unit = {j.name: mm if j.type == "prismatic" else 1.0 for j in joints}
+    for j in joints:
+        if j.mimic is not None and j.mimic[0] in unit:
+            leader, mult, offset = j.mimic
+            j.mimic = (leader, mult * unit[j.name] / unit[leader], offset * unit[j.name])
     return Robot(name=root.get("name", "robot"), links=links, joints=joints)
 
 
-def drop_empty_links(robot: Robot) -> Robot:
-    """Fold links without geometry into their neighbors through fixed joints.
+def _hull_volume(link: Link) -> float:
+    import trimesh
 
-    A geometry-less root (``world``) is removed; a geometry-less link behind a
-    fixed joint is merged into its parent frame.  Moving joints must connect
-    links that both have geometry, since each needs a cube.
+    if not link.meshes:
+        return 0.0
+    return trimesh.convex.convex_hull(np.vstack([m.vertices for m in link.meshes])).volume
+
+
+def drop_empty_links(robot: Robot, merge_fixed: bool = True) -> Robot:
+    """Fold links joined by fixed joints into one rigid body, which gets one cube.
+
+    A child behind a fixed joint is merged into its parent (its meshes move
+    into the parent frame).  A geometry-less root (``world``) is removed and
+    its largest fixed child becomes the root.  With ``merge_fixed`` off, only
+    links without geometry are folded away and the others keep their own
+    cubes, joined by printed struts.  Moving joints must connect links with
+    geometry, since each needs a cube.
     """
-    links, joints = dict(robot.links), list(robot.joints)
+    links = {n: Link(n, list(link.meshes), list(link.merged)) for n, link in robot.links.items()}
+    joints = [Joint(**{**j.__dict__}) for j in robot.joints]
     changed = True
     while changed:
         changed = False
+        roots = [n for n in links if not any(j.child == n for j in joints)]
+        for root in roots:
+            fixed = [j for j in joints if j.parent == root and j.type == "fixed"]
+            if links[root].has_geometry or not fixed:
+                continue
+            # Empty root: its largest fixed child becomes the root.
+            joint = max(fixed, key=lambda j: _hull_volume(links[j.child]))
+            joints.remove(joint)
+            for other in joints:
+                if other.parent == root:
+                    other.parent = joint.child
+                    other.origin = np.linalg.inv(joint.origin) @ other.origin
+            del links[root]
+            changed = True
+            break
+        if changed:
+            continue
         for joint in list(joints):
             parent, child = links[joint.parent], links[joint.child]
-            if joint.type != "fixed":
+            if joint.type != "fixed" or (child.has_geometry and not merge_fixed):
                 continue
-            if not parent.has_geometry and not any(j.child == parent.name for j in joints):
-                # Empty root: the child becomes the root.
-                joints.remove(joint)
-                for other in joints:
-                    if other.parent == parent.name:
-                        other.parent = child.name
-                        other.origin = np.linalg.inv(joint.origin) @ other.origin
-                del links[parent.name]
-                changed = True
-                break
-            if not child.has_geometry:
-                joints.remove(joint)
-                for other in joints:
-                    if other.parent == child.name:
-                        other.parent = parent.name
-                        other.origin = joint.origin @ other.origin
-                del links[child.name]
-                changed = True
-                break
+            joints.remove(joint)
+            for mesh in child.meshes:
+                parent.meshes.append(mesh.copy().apply_transform(joint.origin))
+            parent.merged += [child.name, *child.merged]
+            for other in joints:
+                if other.parent == child.name:
+                    other.parent = parent.name
+                    other.origin = joint.origin @ other.origin
+            del links[child.name]
+            changed = True
+            break
     for joint in joints:
         for name in (joint.parent, joint.child):
             if not links[name].has_geometry:
                 raise ValueError(f"link '{name}' has no visual or collision geometry, so it cannot carry a cube")
-    return Robot(name=robot.name, links=links, joints=joints)
+    return Robot(name=robot.name, links=links, joints=joints, mimics=list(robot.mimics))
+
+
+def drop_mimic(robot: Robot) -> Robot:
+    """Keep one joint of each mimic group; leave out the others, with everything beyond them.
+
+    Joints that mimic another move together with it, so the twin needs only
+    one of them: the one whose link is largest, which gets the best cube.
+    Every left-out joint is kept in ``robot.mimics``, re-expressed as
+    ``value = multiplier * kept joint + offset``.
+    """
+    by_name = {j.name: j for j in robot.joints}
+    groups: dict[str, list[Joint]] = {}
+    for joint in robot.joints:
+        if joint.mimic is not None and joint.mimic[0] in by_name:
+            groups.setdefault(joint.mimic[0], [by_name[joint.mimic[0]]]).append(joint)
+    keep_joints, mimics = [], []
+    for leader, members in groups.items():
+        kept = max(members, key=lambda j: _hull_volume(robot.links[j.child]))
+        # kept = mk * leader + ok  ->  leader = (kept - ok) / mk
+        mk, ok = (1.0, 0.0) if kept.name == leader else kept.mimic[1:]
+        for joint in members:
+            if joint is kept:
+                continue
+            m, o = (1.0, 0.0) if joint.name == leader else joint.mimic[1:]
+            mimics.append(Joint(**{**joint.__dict__, "mimic": (kept.name, m / mk, o - m * ok / mk)}))
+        keep_joints.append(kept.name)
+    gone: set[str] = set()
+    for joint in mimics:
+        gone |= _subtree(robot, joint.child)
+    joints = [Joint(**{**j.__dict__, "mimic": None}) if j.name in keep_joints else j
+              for j in robot.joints if j.child not in gone]
+    return Robot(name=robot.name, links={n: link for n, link in robot.links.items() if n not in gone},
+                 joints=joints, mimics=robot.mimics + mimics)
 
 
 def cut_after(robot: Robot, tip: str) -> Robot:
@@ -270,7 +367,7 @@ def cut_after(robot: Robot, tip: str) -> Robot:
         gone.add(name)
         stack += [j.child for j in robot.joints if j.parent == name]
     return Robot(name=robot.name, links={n: link for n, link in robot.links.items() if n not in gone},
-                 joints=[j for j in robot.joints if j.child not in gone])
+                 joints=[j for j in robot.joints if j.child not in gone], mimics=list(robot.mimics))
 
 
 # ---------------------------------------------------------------------------
@@ -288,18 +385,25 @@ class Hull:
         import trimesh
 
         mesh = trimesh.convex.convex_hull(points)
-        planes = np.column_stack([mesh.face_normals, (mesh.face_normals * mesh.triangles[:, 0]).sum(axis=1)])
-        planes = np.unique(np.round(planes, 6), axis=0)
-        return cls(planes[:, :3], planes[:, 3], mesh)
+        # Curved meshes give thousands of facets.  Facets whose normals agree to about
+        # 6 degrees share one plane, pushed out to the farthest hull vertex, so the
+        # hull grows by a fraction of a millimeter and the LPs stay small.
+        normals = mesh.face_normals
+        _, group = np.unique(np.round(normals * 10.0).astype(int), axis=0, return_inverse=True)
+        merged = np.zeros((group.max() + 1, 3))
+        np.add.at(merged, group.ravel(), normals)
+        merged /= np.linalg.norm(merged, axis=1, keepdims=True)
+        return cls(merged, (mesh.vertices @ merged.T).max(axis=0), mesh)
 
 
 def _cube_lp(hull: Hull, rot: np.ndarray, extra: list[tuple[np.ndarray, float]] = (),
-             edge: float | None = None) -> tuple[float, np.ndarray, float]:
+             edge: float | None = None, weights=None) -> tuple[float, np.ndarray, float]:
     """Largest cube with orientation ``rot`` inside the hull and the extra half-spaces.
 
     ``extra`` holds (n, d) meaning the whole cube satisfies ``n @ x <= d``;
     those are hard.  With ``edge`` given, the cube size is fixed and the hull
-    may be exceeded: the LP instead minimises how far it sticks out.
+    may be exceeded: the LP instead minimises how far it sticks out, and with
+    ``weights`` the extra half-spaces may be crossed too, at that cost per mm.
     Returns (edge, center, hull overshoot).
     """
     from scipy.optimize import linprog
@@ -317,28 +421,31 @@ def _cube_lp(hull: Hull, rot: np.ndarray, extra: list[tuple[np.ndarray, float]] 
         if not res.success:
             return 0.0, np.zeros(3), 0.0
         return float(res.x[3]), res.x[:3], 0.0
-    # Fixed edge: variables (c, t); hull rows relaxed by t >= 0.
-    a_hull = np.column_stack([hull.normals, -np.ones(len(hull.normals))])
+    # Fixed edge: variables (c, t, s): hull rows relaxed by t >= 0, extra rows by
+    # s_k >= 0 at a cost of weights[k] each (hard when no weights are given).
+    k = len(extra)
+    w = np.full(k, 1e4) if weights is None else np.asarray(weights, dtype=float)
+    a_hull = np.hstack([hull.normals, -np.ones((len(hull.normals), 1)), np.zeros((len(hull.normals), k))])
     b_hull = hull.offsets - edge * reach(hull.normals)
-    a_hard = np.array([[*n, 0.0] for n, _ in extra]).reshape(-1, 4)
-    b_hard = np.array([d - edge * reach(n)[0] for n, d in extra])
-    a_ub, b_ub = np.vstack([a_hull, a_hard]), np.concatenate([b_hull, b_hard])
-    res = linprog([0, 0, 0, 1], A_ub=a_ub, b_ub=b_ub, bounds=[(None, None)] * 3 + [(0, None)], method="highs")
+    a_extra = np.hstack([np.array([n for n, _ in extra]).reshape(-1, 3), np.zeros((k, 1)), -np.eye(k)])
+    b_extra = np.array([d - edge * reach(n)[0] for n, d in extra])
+    a_ub, b_ub = np.vstack([a_hull, a_extra]), np.concatenate([b_hull, b_extra])
+    cost = np.concatenate([[0, 0, 0, 1], w])
+    bounds = [(None, None)] * 3 + [(0, None)] * (1 + k)
+    res = linprog(cost, A_ub=a_ub, b_ub=b_ub, bounds=bounds, method="highs")
     if not res.success:
         return 0.0, np.zeros(3), np.inf
-    overshoot = float(res.x[3])
-    # Many centers stick out equally far; take the one nearest the hull's middle,
-    # so the cube overhangs its link evenly.  Variables (c, t, |c - mid|).
+    # Many centers cost the same; take the one nearest the hull's middle, so the
+    # cube overhangs its link evenly.  Extra variables |c - mid|.
     mid = hull.mesh.centroid
     a2 = np.hstack([a_ub, np.zeros((len(a_ub), 3))])
-    cap = np.array([[0, 0, 0, 1, 0, 0, 0]])
-    absdev = np.vstack([np.hstack([s * np.eye(3), np.zeros((3, 1)), -np.eye(3)]) for s in (1, -1)])
-    res2 = linprog([0, 0, 0, 0, 1, 1, 1], A_ub=np.vstack([a2, cap, absdev]),
-                   b_ub=np.concatenate([b_ub, [overshoot + 0.5], mid, -mid]),
-                   bounds=[(None, None)] * 3 + [(0, None)] * 4, method="highs")
-    if res2.success:
-        return edge, res2.x[:3], float(res2.x[3])
-    return edge, res.x[:3], overshoot
+    cap = np.concatenate([cost, np.zeros(3)])[None, :]
+    absdev = np.vstack([np.hstack([sign * np.eye(3), np.zeros((3, 1 + k)), -np.eye(3)]) for sign in (1, -1)])
+    res2 = linprog(np.concatenate([np.zeros(4 + k), np.ones(3)]), A_ub=np.vstack([a2, cap, absdev]),
+                   b_ub=np.concatenate([b_ub, [res.fun + 0.5], mid, -mid]),
+                   bounds=bounds + [(0, None)] * 3, method="highs")
+    best = res2 if res2.success else res
+    return edge, best.x[:3], float(best.x[3])
 
 
 def _random_rotations(n: int, rng: np.random.Generator) -> list[np.ndarray]:
@@ -387,10 +494,13 @@ def largest_cube(hull: Hull, extra: list[tuple[np.ndarray, float]] = (), samples
     return edge, pose
 
 
-def place_cube(hull: Hull, edge: float, rot: np.ndarray,
-               extra: list[tuple[np.ndarray, float]] = ()) -> tuple[np.ndarray, float]:
-    """Pose of a cube of fixed ``edge`` that sticks out of ``hull`` as little as possible."""
-    _, center, overshoot = _cube_lp(hull, rot, extra, edge=edge)
+def place_cube(hull: Hull, edge: float, rot: np.ndarray, extra: list[tuple[np.ndarray, float]] = (),
+               weights=None) -> tuple[np.ndarray, float]:
+    """Pose of a cube of fixed ``edge`` that sticks out of ``hull`` as little as possible.
+
+    With ``weights``, the ``extra`` half-spaces are soft (cost per mm crossed).
+    """
+    _, center, overshoot = _cube_lp(hull, rot, extra, edge=edge, weights=weights)
     pose = np.eye(4)
     pose[:3, :3], pose[:3, 3] = rot, center
     return pose, overshoot
@@ -527,24 +637,60 @@ def _joint_line(joint: Joint, side: str) -> tuple[np.ndarray, np.ndarray]:
     return np.zeros(3), joint.axis.copy()
 
 
-def _reservation(joint: Joint, side: str, center: np.ndarray, mode: str, sign: float = 1.0):
-    """Half-space keeping a cube clear of a revolute joint's knuckle stack.
+def _reservation_options(joint: Joint, side: str, center: np.ndarray):
+    """Ways to keep a cube clear of a revolute joint's knuckle stack, as (mode, sign, half-space).
 
-    ``radial``: behind a plane tangent to the reserved cylinder, facing the cube.
-    ``axial``: beyond the reserved length, on the ``sign`` side of the origin.
+    ``axial``: beyond the reserved length, on either side of the origin along
+    the axis.  ``radial``: behind a plane tangent to the reserved cylinder,
+    toward the cube's free center, away from it, or to either side.
     """
     point, axis = _joint_line(joint, side)
-    if mode == "axial":
+    out = []
+    for sign in (1.0, -1.0):
         n = sign * axis
-        return -n, -(n @ point + RESERVE_HALF_LENGTH)
+        out.append(("axial", sign, (-n, -(n @ point + RESERVE_HALF_LENGTH))))
     off = center - point
     off = off - (off @ axis) * axis
     if np.linalg.norm(off) < 1e-6:
         off = np.cross(axis, [1.0, 0.0, 0.0])
         if np.linalg.norm(off) < 1e-6:
             off = np.cross(axis, [0.0, 1.0, 0.0])
-    n = off / np.linalg.norm(off)
+    u = off / np.linalg.norm(off)
+    w = np.cross(axis, u)
+    for n in (u, -u, w, -w):
+        out.append(("radial", 0.0, (-n, -(n @ point + RESERVE_RADIUS))))
+    return out
+
+
+def _keep_clear(point: np.ndarray, axis: np.ndarray, center: np.ndarray) -> tuple[np.ndarray, float]:
+    """Half-space between a reserved knuckle cylinder and a cube around ``center``.
+
+    Whichever of its side (radial) or end (axial) faces leaves the cube more room.
+    """
+    off = center - point
+    along = off @ axis
+    radial = off - along * axis
+    r = np.linalg.norm(radial)
+    if abs(along) - RESERVE_HALF_LENGTH > r - RESERVE_RADIUS or r < 1e-6:
+        n = (np.sign(along) or 1.0) * axis
+        return -n, -(n @ point + RESERVE_HALF_LENGTH)
+    n = radial / r
     return -n, -(n @ point + RESERVE_RADIUS)
+
+
+def _placement_cost(hull: Hull, edge: float, pose: np.ndarray, extra, weights) -> float:
+    """Hull overshoot plus weighted crossing of ``extra`` half-spaces, for a cube at ``pose``."""
+    corners = (pose[:3, :3] @ (_UNIT_CORNERS * edge).T).T + pose[:3, 3]
+    over = max(0.0, float((corners @ hull.normals.T - hull.offsets).max()))
+    for (n, d), w in zip(extra, weights):
+        over += w * max(0.0, float((corners @ n).max() - d))
+    return over
+
+
+HARD_WEIGHT = 8.0   # cost per mm of an oversized cube crossing its own knuckle or separation planes
+STRICT_WEIGHT = 200.0   # ... for a joint whose knuckle found no room the first time, and for the
+                        # planes that keep two cubes apart
+NEAR_WEIGHT = 4.0   # ... or a neighbor's knuckle room, shared over its sampled angles (vs. 1 per mm out of the hull)
 
 
 def _neighbor_frames(robot: Robot, link: str, skip: Joint):
@@ -598,41 +744,64 @@ def _first_clash(robot: Robot, cubes: dict[str, LinkCube], adjacent: set, separa
 
 
 def plan_cubes(robot: Robot, dict_name: str, mono_cfg, gaps: dict[str, float] | None = None,
-               samples: int = 300) -> dict[str, LinkCube]:
-    """Fit one cube per link, clear of the joint hardware and of each other."""
+               samples: int = 300, strict: set[str] = frozenset()) -> dict[str, LinkCube]:
+    """Fit one cube per link, clear of the joint hardware and of each other.
+
+    Oversized cubes may cross the joints' reserved knuckle room a little when
+    nothing else fits; for the ``strict`` joints they practically may not.
+    """
     gaps = gaps or {}
     min_edge = min_module_edge(dict_name, mono_cfg)
     hulls = {name: Hull.of(np.vstack([m.vertices for m in link.meshes])) for name, link in robot.links.items()}
     extra: dict[str, list] = {name: [] for name in robot.links}
     near: dict[str, list] = {name: [] for name in robot.links}   # neighbors' reservations, swept
+    near_owner: dict[str, list] = {name: [] for name in robot.links}   # ... and whose they are
 
     # Reserve room for every revolute joint's knuckle stack around its origin.
-    free = {name: largest_cube(hulls[name], samples=0)[1][:3, 3] for name in robot.links}
-    for joint in robot.joints:
-        if joint.type not in ("revolute", "continuous"):
-            continue
-        options = []
-        for p_mode in ("radial", "axial"):
-            for c_mode in ("radial", "axial"):
-                p_point, p_axis = _joint_line(joint, "parent")
-                p_sign = np.sign((free[joint.parent] - p_point) @ p_axis) or 1.0
-                c_sign = np.sign(free[joint.child] @ joint.axis) or 1.0
-                if p_mode == c_mode == "axial" and p_sign == c_sign:
-                    c_sign = -p_sign
-                p_hs = _reservation(joint, "parent", free[joint.parent], p_mode, p_sign)
-                c_hs = _reservation(joint, "child", free[joint.child], c_mode, c_sign)
-                p_edge = largest_cube(hulls[joint.parent], extra[joint.parent] + [p_hs], samples=0)[0]
-                c_edge = largest_cube(hulls[joint.child], extra[joint.child] + [c_hs], samples=0)[0]
-                options.append((min(p_edge, min_edge) + min(c_edge, min_edge) + 1e-3 * (p_edge + c_edge),
-                                p_hs, c_hs))
-        _, p_hs, c_hs = max(options, key=lambda o: o[0])
-        extra[joint.parent].append(p_hs)
-        extra[joint.child].append(c_hs)
-        for side, hs in ((joint.parent, p_hs), (joint.child, c_hs)):
+    free = {name: _cube_lp(hulls[name], np.eye(3))[1] for name in robot.links}
+
+    def value(name, hs):
+        """How good a cube this link still gets with one more reservation (link-aligned, for speed)."""
+        rows = extra[name] + [hs]
+        edge = _cube_lp(hulls[name], np.eye(3), rows)[0]
+        if edge >= min_edge:
+            return min_edge + 1e-3 * edge
+        # Too small: the cost of the oversized cube sticking out or crossing its reservations.
+        pose, _ = place_cube(hulls[name], min_edge, np.eye(3), rows, [HARD_WEIGHT] * len(rows))
+        return min_edge - _placement_cost(hulls[name], min_edge, pose, rows, [HARD_WEIGHT] * len(rows))
+
+    # Each joint picks how its cubes keep clear given the others' picks; a few
+    # rounds let early picks adapt to later ones.
+    revolute = [j for j in robot.joints if j.type in ("revolute", "continuous")]
+    chosen: dict[str, tuple] = {}
+    for _ in range(3):
+        for joint in revolute:
+            if joint.name in chosen:
+                old_p, old_c = chosen[joint.name]
+                extra[joint.parent] = [hs for hs in extra[joint.parent] if hs is not old_p]
+                extra[joint.child] = [hs for hs in extra[joint.child] if hs is not old_c]
+            sides = {}
+            for side, link in (("parent", joint.parent), ("child", joint.child)):
+                sides[side] = [(mode, sign, hs, value(link, hs))
+                               for mode, sign, hs in _reservation_options(joint, side, free[link])]
+            options = [(pv + cv, p_hs, c_hs)
+                       for p_mode, p_sign, p_hs, pv in sides["parent"]
+                       for c_mode, c_sign, c_hs, cv in sides["child"]
+                       if not (p_mode == c_mode == "axial" and p_sign == c_sign)]   # stack between them
+            _, p_hs, c_hs = max(options, key=lambda o: o[0])
+            extra[joint.parent].append(p_hs)
+            extra[joint.child].append(c_hs)
+            chosen[joint.name] = (p_hs, c_hs)
+    for joint in revolute:
+        # The neighbors' cubes, moving through their own joints, must keep out of it too.
+        for side, which in ((joint.parent, "parent"), (joint.child, "child")):
+            point, axis = _joint_line(joint, which)
             for other, to_side in _neighbor_frames(robot, side, skip=joint):
                 for mat in to_side:
-                    n, d = hs
-                    near[other].append((mat[:3, :3].T @ n, d - n @ mat[:3, 3]))
+                    back = np.linalg.inv(mat)
+                    near[other].append(_keep_clear(back[:3, :3] @ point + back[:3, 3], back[:3, :3] @ axis,
+                                                   free[other]))
+                    near_owner[other].append(joint.name)
 
     zero = robot.forward()
     adjacent = {frozenset((j.parent, j.child)) for j in robot.joints}
@@ -644,19 +813,28 @@ def plan_cubes(robot: Robot, dict_name: str, mono_cfg, gaps: dict[str, float] | 
         return _links_clear(real, frames, a, b)
 
     separated: set[tuple[str, str, str]] = set()
+    cubes: dict[str, LinkCube] = {}
+    dirty = set(robot.links)
     for _ in range(4 * len(robot.links) ** 2):
-        cubes = {}
-        for name, hull in hulls.items():
+        for name in dirty:
+            hull = hulls[name]
             edge, pose = largest_cube(hull, extra[name], samples=samples)
             fitted, overshoot = edge, 0.0
             if edge < min_edge:
                 # Sticking out of its hull, the cube must also keep out of the
                 # neighbors' knuckles, which the hull no longer guarantees.
-                rot = pose[:3, :3]
-                pose, overshoot = place_cube(hull, min_edge, rot, extra[name])
-                near_pose, near_overshoot = place_cube(hull, min_edge, rot, extra[name] + near[name])
-                if near_overshoot <= overshoot + min_edge / 2:
-                    pose, overshoot = near_pose, near_overshoot
+                # Both are soft: on a link much smaller than the cube they may not all
+                # hold, and the cube should then give a little rather than fly away.
+                strict_rows = {id(hs) for j in strict if j in chosen for hs in chosen[j]}
+                reserve_rows = {id(hs) for pair in chosen.values() for hs in pair}
+                # Knuckle room may give a little; the planes between cubes may not.
+                weights = [STRICT_WEIGHT if id(hs) in strict_rows else HARD_WEIGHT if id(hs) in reserve_rows
+                           else STRICT_WEIGHT for hs in extra[name]]
+                # A neighbor's knuckle comes as one row per sampled angle: they share one weight.
+                counts = {owner: near_owner[name].count(owner) for owner in set(near_owner[name])}
+                weights += [(STRICT_WEIGHT if owner in strict else NEAR_WEIGHT) / counts[owner]
+                            for owner in near_owner[name]]
+                pose, overshoot = place_cube(hull, min_edge, pose[:3, :3], extra[name] + near[name], weights)
                 edge = min_edge
             layout = marker_layout(edge, dict_name, mono_cfg)
             cubes[name] = LinkCube(name, edge, pose, layout, overshoot, fitted)
@@ -670,6 +848,7 @@ def plan_cubes(robot: Robot, dict_name: str, mono_cfg, gaps: dict[str, float] | 
         a_hs, b_hs = _separation(joint, cubes[a], a_to_parent, cubes[b], b_to_child, gaps.get(joint.name, 2.0))
         extra[a].append(a_hs)
         extra[b].append(b_hs)
+        dirty = {a, b}
     raise ValueError("could not separate the link cubes")
 
 
@@ -758,10 +937,14 @@ def _strut(cube: CubeSolid, z0: float, z1: float, radius: float, style: str, tur
     ``direct``: one straight hull from a lug on the disc rim to the face that
     looks at the lug.  ``dogleg``: out along the disc's plane to below the cube's
     center, then straight into the face that looks at that point; ``dogleg_out``
-    rises a little further out, clear of the nut.  ``fork``:
+    rises a little further out, clear of the nut; ``dogleg_wide`` rises beside
+    the cube into its outer side face; ``riser`` runs along the axis just
+    outside the disc to the cube's height, then into the face that looks at
+    the axis.  ``fork``:
     two arms to opposite edges of a face across the axis (for cubes on the axis).
     ``turn`` (rad) swings the lug and elbow around the axis away from the
-    cube's direction, to pass beside a neighbor.
+    cube's direction, to pass beside a neighbor or through the gap its
+    motion leaves.
     """
     center = cube.pose[:3, 3]
     perp = np.array([center[0], center[1], 0.0])
@@ -803,10 +986,21 @@ def _strut(cube: CubeSolid, z0: float, z1: float, radius: float, style: str, tur
             edge_box = _box_points(edge, [a, b, normal], [STRUT_W / 2, STRUT_W / 2, MOUNT_SLAB / 2])
             arms.append(_hull(np.vstack([rim_box, edge_box])))
         return arms[0] + arms[1], k
+    if style == "riser":
+        # Straight along the axis, just outside the disc, to the cube's height, then out
+        # into the face that looks back at the axis: stays inside whatever sweeps around it.
+        elbow_c = np.array([*(u * (radius + 1.5))[:2], center[2]])
+        elbow = _box_points(elbow_c, [u, t, zaxis], [3.0, STRUT_W / 2, (z1 - z0) / 2])
+        k, slab = foot(elbow_c, side=STRUT_W + 2.0)
+        return _hull(np.vstack([lug, elbow])) + _hull(np.vstack([elbow, slab])), k
     rho = max(np.linalg.norm(perp), radius + 1.5)
     if style == "dogleg_out":
         # Rise just outside the nut's (and a hand's) room around the axis.
         rho = max(rho, NUT_R + 5.0 + STRUT_W / 2 + 2.0)   # its foot pad is 1 mm wider than the strut
+    elif style == "dogleg_wide":
+        # Rise beside the cube and land on its outer side face, for cubes sitting on the axis.
+        corners = (cube.pose[:3, :3] @ (_UNIT_CORNERS * cube.edge).T).T + center
+        rho = max(rho, NUT_R + 5.0 + STRUT_W / 2 + 2.0, (corners @ u).max() + STRUT_W / 2 + MOUNT_SLAB + 1.0)
     elbow_c = np.array([*(u * rho)[:2], zm])
     elbow = _box_points(elbow_c, [u, t, zaxis], [STRUT_W / 2, STRUT_W / 2, (z1 - z0) / 2])
     # A pad just wider than the strut keeps the rising leg straight.
@@ -961,7 +1155,7 @@ class Pieces:
 def design_revolute(joint: Joint, parent: CubeSolid, child: CubeSolid, values: np.ndarray,
                     z_step: float = 2.0, parent_extra: Pieces | None = None,
                     parent_obstacle: Pieces | None = None,
-                    child_obstacle: Pieces | None = None,
+                    child_obstacle: Pieces | None = None, child_slots: Pieces | None = None,
                     reasons: dict | None = None) -> RevoluteDesign | None:
     """Search knuckle placement for a revolute joint; cubes are given in the joint frame (axis z).
 
@@ -973,12 +1167,15 @@ def design_revolute(joint: Joint, parent: CubeSolid, child: CubeSolid, values: n
     ``parent_extra``: parts already on the parent link (it may merge with them,
     the child must miss them).  ``parent_obstacle`` / ``child_obstacle``: the
     other neighbors' cubes swept through their own joints, fixed relative to
-    the parent / child; that side's strut must miss them.  All in the joint
-    frame (child at zero).
+    the parent / child; that side's strut must miss them.  ``child_slots``:
+    where the child's own joints will put their knuckles; they turn with the
+    child, so the parent strut must miss them at every angle.  All in the
+    joint frame (child at zero).
     """
     parent_extra = parent_extra or Pieces()
     parent_obstacle = parent_obstacle or Pieces()
     child_obstacle = child_obstacle or Pieces()
+    child_slots = child_slots or Pieces()
     obstacle = parent_obstacle
     reasons = reasons if reasons is not None else {}
 
@@ -1005,21 +1202,28 @@ def design_revolute(joint: Joint, parent: CubeSolid, child: CubeSolid, values: n
 
     (pl, ph), (cl, ch) = axial(parent), axial(child)
     zs = sorted(np.arange(min(pl, cl) - 60.0, max(ph, ch) + 60.0, z_step), key=abs)   # prefer the joint origin
-    straight = [(style, 0.0) for style in ("dogleg", "dogleg_out", "direct", "fork")]
-    turned = [(style, sign * np.radians(deg)) for deg in (25, 50, 75) for sign in (1, -1)
-              for style in ("dogleg", "dogleg_out", "direct")]
+    straight = [(style, 0.0) for style in ("dogleg", "dogleg_out", "direct", "fork", "dogleg_wide", "riser")]
+    turned = [(style, sign * np.radians(deg)) for deg in (30, 60, 90, 120, 150, 180) for sign in (1, -1)
+              for style in ("dogleg", "direct", "dogleg_wide", "riser") if not (deg == 180 and sign < 0)]
     # Struts swung around the axis only when straight ones find no layout.
     for strut_options in (straight, straight + turned):
         design = _search_revolute(parent, child, child_poses, child_swept, avoid_stack, zs, strut_options,
-                                  parent_extra, obstacle, child_obstacle, why)
+                                  parent_extra, obstacle, child_obstacle, child_slots, why)
         if design is not None:
             return design
     return None
 
 
 def _search_revolute(parent, child, child_poses, child_swept, avoid_stack, zs, strut_options,
-                     parent_extra, obstacle, child_obstacle, why) -> RevoluteDesign | None:
-    parent_cube, child_cube = parent.manifold(), child.manifold()
+                     parent_extra, obstacle, child_obstacle, child_slots, why) -> RevoluteDesign | None:
+    """Try knuckle placements; see :func:`design_revolute`.
+
+    Each side's struts are checked on their own first (the child's through its
+    whole motion), so a pair only needs the strut-against-strut test.
+    """
+    parent_cube = parent.manifold()
+    parent_inner, child_inner = parent.manifold(shrink=0.3), child.manifold(shrink=0.3)
+    back = [np.linalg.inv(pose) for pose in child_poses[::2]]
     best = None
     for radius in DISC_RADII:
         for order in ("parent_low", "parent_high"):
@@ -1033,42 +1237,54 @@ def _search_revolute(parent, child, child_poses, child_swept, avoid_stack, zs, s
                         continue
                     parent_z, child_z = (low, high) if order == "parent_low" else (high, low)
                     p_disc, c_disc = _disc(radius, *parent_z), _disc(radius, *child_z)
-                    found = None
+                    keep_pieces = Pieces([keep])
+
+                    parents = []
                     for p_style, p_turn in strut_options:
                         p_strut, p_face = _strut(parent, *parent_z, radius, p_style, p_turn)
-                        if p_strut.is_empty() or (p_strut ^ parent.manifold(shrink=0.3)).volume() > 1e-3:
+                        if p_strut.is_empty() or (p_strut ^ parent_inner).volume() > 1e-3:
                             why("parent strut cuts its own cube")
-                            continue
-                        if Pieces([keep]).hits(p_strut):
+                        elif keep_pieces.hits(p_strut):
                             why("parent strut blocks the bolt or nut")
-                            continue
-                        if child_swept.hits(p_strut):
+                        elif child_swept.hits(p_strut):
                             why("parent strut is in the child cube's path")
-                            continue
-                        if obstacle.hits(p_strut):
+                        elif obstacle.hits(p_strut):
                             why("parent strut hits a neighboring link")
-                            continue
-                        static = Pieces([p_strut, p_disc, keep]).extend(parent_extra)
-                        if Pieces([p_strut, keep]).extend(parent_extra).hits(c_disc):
+                        elif any(child_slots.hits(_place(p_strut, m)) for m in back):
+                            why("parent strut sweeps through the next joint's knuckle")
+                        elif Pieces([p_strut, keep]).extend(parent_extra).hits(c_disc):
                             why("parent strut cuts into the child disc")
+                        else:
+                            parents.append((p_style, p_turn, p_strut, p_face))
+                    if not parents:
+                        continue
+
+                    static = Pieces([p_disc, keep]).extend(parent_extra)
+                    children = []
+                    for c_style, c_turn in strut_options:
+                        c_strut, c_face = _strut(child, *child_z, radius, c_style, c_turn)
+                        if c_strut.is_empty() or (c_strut ^ child_inner).volume() > 1e-3:
+                            why("child strut cuts its own cube")
                             continue
-                        for c_style, c_turn in strut_options:
-                            c_strut, c_face = _strut(child, *child_z, radius, c_style, c_turn)
-                            if c_strut.is_empty() or (c_strut ^ child.manifold(shrink=0.3)).volume() > 1e-3:
-                                why("child strut cuts its own cube")
-                                continue
-                            if Pieces([keep]).hits(c_strut):
-                                why("child strut blocks the bolt or nut")
-                                continue
-                            if child_obstacle.hits(c_strut):
-                                why("child strut hits a neighboring link")
-                                continue
-                            moving = c_strut + c_disc
-                            if any(static.hits(_place(child_cube, pose)) or
-                                   static.hits(_place(c_strut, pose)) or
-                                   Pieces([parent_cube]).hits(_place(moving, pose))
-                                   for pose in child_poses):
-                                why("child parts collide with the parent while turning")
+                        if keep_pieces.hits(c_strut):
+                            why("child strut blocks the bolt or nut")
+                            continue
+                        if child_obstacle.hits(c_strut):
+                            why("child strut hits a neighboring link")
+                            continue
+                        moving = c_strut + c_disc
+                        swept = [_place(c_strut, pose) for pose in child_poses]
+                        if any(static.hits(part) for part in swept) or \
+                                any(Pieces([parent_cube]).hits(_place(moving, pose)) for pose in child_poses):
+                            why("child parts collide with the parent while turning")
+                            continue
+                        children.append((c_style, c_turn, c_strut, c_face, Pieces(swept)))
+
+                    found = None
+                    for p_style, p_turn, p_strut, p_face in parents:
+                        for c_style, c_turn, c_strut, c_face, swept in children:
+                            if swept.hits(p_strut):
+                                why("child strut hits the parent strut while turning")
                                 continue
                             styles = tuple(f"{st}{np.degrees(tn):+.0f}" if tn else st
                                            for st, tn in ((p_style, p_turn), (c_style, c_turn)))
@@ -1142,31 +1358,87 @@ def _mount_plate(link: TwinLink, face_name: str):
     return _place(plate + mono._legs(face, link.dims, link.legs), link.cube.pose)
 
 
-def _corridor(joint: Joint, child: LinkCube):
+STACK_HALF = (HEAD_T + 2.0 + 2 * DISC_T + DISC_GAP + NUT_T + 6.0) / 2   # a knuckle stack with its head and nut room
+STACK_R = NUT_R + 5.0                                                  # and its radius (the wing nut's reach)
+
+
+def _knuckle_slot(joint: Joint, parent: LinkCube, child: LinkCube) -> float:
+    """Where along its axis (joint frame z) a joint's knuckle stack will have room.
+
+    The axis is blocked where either cube comes within the stack's radius;
+    the slot is the free spot nearest the joint origin, or the middle of the
+    widest gap when none is long enough.
+    """
+    inv = np.linalg.inv(joint_frame(joint))
+    grid = np.array(np.meshgrid(*[np.linspace(-0.5, 0.5, 8)] * 3)).reshape(3, -1).T
+    blocked = []
+    for pose, edge in ((inv @ parent.pose, parent.edge), (inv @ joint.origin @ child.pose, child.edge)):
+        pts = (pose[:3, :3] @ (grid * edge).T).T + pose[:3, 3]
+        near = pts[np.hypot(pts[:, 0], pts[:, 1]) < STACK_R + edge / 7]
+        if len(near):
+            blocked.append((near[:, 2].min() - edge / 7, near[:, 2].max() + edge / 7))
+    zs = sorted(np.arange(-80.0, 80.5, 1.0), key=abs)
+    for z in zs:
+        if all(z + STACK_HALF < lo or z - STACK_HALF > hi for lo, hi in blocked):
+            return float(z)
+    # No gap is long enough: the widest one between the cubes.
+    return float(max(zs, key=lambda z: min([abs(z - lo) for lo, _ in blocked] + [abs(z - hi) for _, hi in blocked]
+                                           if all(z < lo or z > hi for lo, hi in blocked) else [-1.0])))
+
+
+def _corridor(joint: Joint, parent: LinkCube, child: LinkCube):
     """Room a joint not designed yet will need, in its parent's frame.
 
-    The convex hull of the child cube swept through the joint plus the
-    knuckle space at the joint origin: that joint's struts live in there.
+    The child cube swept through the joint (as pieces), and for a revolute
+    joint the slot on its axis where its knuckle will go (or None).
     """
-    pts = []
-    for value in sweep_values(joint):
+    values = sweep_values(joint)
+    if joint.moves and len(values) > 2:
+        span = np.degrees(values[-1] - values[0]) if joint.type != "prismatic" else values[-1] - values[0]
+        values = np.linspace(values[0], values[-1], max(2, int(np.ceil(span / 20.0)) + 1))
+    corners = []
+    for value in values:
         pose = joint.origin @ joint_motion(joint, value) @ child.pose
-        pts.append((pose[:3, :3] @ (_UNIT_CORNERS * child.edge).T).T + pose[:3, 3])
+        corners.append((pose[:3, :3] @ (_UNIT_CORNERS * child.edge).T).T + pose[:3, 3])
+    parts = [_hull(np.vstack(pair)) for pair in zip(corners[:-1], corners[1:])] or [_hull(corners[0])]
+    slot = None
     if joint.type in ("revolute", "continuous"):
-        frame = joint_frame(joint)
-        ring = [frame[:3, :3] @ np.array([DISC_RADII[0] * np.cos(a), DISC_RADII[0] * np.sin(a), z]) + frame[:3, 3]
-                for a in np.linspace(0, 2 * np.pi, 16, endpoint=False) for z in (-DISC_T - 1.0, DISC_T + 1.0)]
-        pts.append(np.array(ring))
-    return _hull(np.vstack(pts))
+        z = _knuckle_slot(joint, parent, child)
+        slot = _place(_disc(STACK_R, z - STACK_HALF, z + STACK_HALF, 32), joint_frame(joint))
+    return parts, slot
+
+
+class JointLayoutError(ValueError):
+    """No collision-free hardware layout for one joint."""
+
+    def __init__(self, joint: str, message: str):
+        super().__init__(message)
+        self.joint = joint
 
 
 def build_twin(robot: Robot, dict_name: str, mono_cfg, ids: list[int] | None = None,
                samples: int = 300, check_samples: int = 40, seed: int = 0) -> TwinBuild:
-    """Plan cubes, design every joint, and build all printable parts of the twin."""
+    """Plan cubes, design every joint, and build all printable parts of the twin.
+
+    When a joint's knuckle finds no room, the cubes are planned again with that
+    joint's reserved room kept strictly clear, a few times before giving up.
+    """
+    strict: set[str] = set()
+    while True:
+        try:
+            return _build_twin(robot, dict_name, mono_cfg, ids, samples, check_samples, seed, strict)
+        except JointLayoutError as exc:
+            if exc.joint in strict or len(strict) >= 3:
+                raise
+            strict.add(exc.joint)
+
+
+def _build_twin(robot: Robot, dict_name: str, mono_cfg, ids, samples, check_samples, seed,
+                strict: set[str]) -> TwinBuild:
     from aprilcube import mono
     from aprilcube.generate import DICT_MAP, TagPatternGenerator, build_face_grid
 
-    cubes = plan_cubes(robot, dict_name, mono_cfg, samples=samples)
+    cubes = plan_cubes(robot, dict_name, mono_cfg, samples=samples, strict=strict)
     attached: dict[tuple[str, str], list] = {}
     loose, joint_records = [], {}
     fixed_children: list[tuple[Joint, str]] = []
@@ -1190,17 +1462,20 @@ def build_twin(robot: Robot, dict_name: str, mono_cfg, ids: list[int] | None = N
         # their own joints.  Clashes that need two joints at once (the real robot folds
         # into itself there too) are left to check_collisions.
         parent_extra = Pieces([_place(p, inv) for p in link_parts[joint.parent][1:]])
-        parent_obstacle, child_obstacle = Pieces(), Pieces()
+        parent_obstacle, child_obstacle, child_slots = Pieces(), Pieces(), Pieces()
+        far_parent, far_child = Pieces(), Pieces()   # beyond the parent's own joint: avoided if possible
         ancestor = robot.parent_joint(joint.parent)
         while ancestor is not None:
             # Designed already: everything above each joint up the chain, swept through
             # that one joint, wherever the robot's own links are clear of this joint's.
+            near = ancestor is robot.parent_joint(joint.parent)
             above = [x for x in robot.links if x not in _subtree(robot, ancestor.child) and link_parts[x]]
             for v in sweep_values(ancestor):
                 frames = robot.forward({ancestor.name: v})
                 to_joint = inv @ np.linalg.inv(frames[joint.parent])
                 for x in above:
-                    for side, pieces in ((joint.parent, parent_obstacle), (joint.child, child_obstacle)):
+                    for side, pieces in ((joint.parent, parent_obstacle if near else far_parent),
+                                         (joint.child, child_obstacle if near else far_child)):
                         if frozenset((x, side)) == frozenset((ancestor.parent, ancestor.child)) or \
                                 _links_clear(real, frames, x, side):
                             for part in link_parts[x]:
@@ -1208,20 +1483,33 @@ def build_twin(robot: Robot, dict_name: str, mono_cfg, ids: list[int] | None = N
             ancestor = robot.parent_joint(ancestor.parent)
         for sib in robot.child_joints(joint.parent):
             if sib is not joint:
-                parent_obstacle.add(_place(_corridor(sib, cubes[sib.child]), inv))
+                parts, slot = _corridor(sib, cubes[sib.parent], cubes[sib.child])
+                for part in [*parts, slot]:
+                    parent_obstacle.add(None if part is None else _place(part, inv))
         child_in_joint = inv @ joint.origin
         for cj in robot.child_joints(joint.child):
-            child_obstacle.add(_place(_corridor(cj, cubes[cj.child]), child_in_joint))
+            parts, slot = _corridor(cj, cubes[cj.parent], cubes[cj.child])
+            for part in parts:
+                child_obstacle.add(_place(part, child_in_joint))
+            if slot is not None:
+                child_obstacle.add(_place(slot, child_in_joint))
+                child_slots.add(_place(slot, child_in_joint))
         obstacle = parent_obstacle
         if joint.type in ("revolute", "continuous"):
             reasons: dict[str, int] = {}
-            design = design_revolute(joint, parent, child, sweep_values(joint), parent_extra=parent_extra,
-                                     parent_obstacle=parent_obstacle, child_obstacle=child_obstacle,
-                                     reasons=reasons)
+            # Clear of the whole chain if possible; else only of the parent's own joint, and the
+            # final pose check reports whatever still touches in deep folds.
+            for p_obst, c_obst in ((parent_obstacle.extend(far_parent), child_obstacle.extend(far_child)),
+                                   (parent_obstacle, child_obstacle)):
+                design = design_revolute(joint, parent, child, sweep_values(joint), parent_extra=parent_extra,
+                                         parent_obstacle=p_obst, child_obstacle=c_obst,
+                                         child_slots=child_slots, reasons=reasons)
+                if design is not None or not (far_parent.items or far_child.items):
+                    break
             if design is None:
                 top = ", ".join(f"{k} ({v})" for k, v in sorted(reasons.items(), key=lambda kv: -kv[1])[:3])
-                raise ValueError(f"joint '{joint.name}': no collision-free knuckle layout found "
-                                 f"(rejected: {top}); try a different --scale")
+                raise JointLayoutError(joint.name, f"joint '{joint.name}': no collision-free knuckle layout "
+                                       f"found (rejected: {top}); try a different --scale")
             p_part, c_part, bolt, nut, stops, (bolt_print, nut_print) = _revolute_stack(
                 design, joint.lower, joint.upper, joint.type == "continuous")
             p_face, c_face = FACE_ORDER[design.parent_face], FACE_ORDER[design.child_face]
@@ -1234,8 +1522,13 @@ def build_twin(robot: Robot, dict_name: str, mono_cfg, ids: list[int] | None = N
             joint_records[joint.name] = {"hardware": "knuckle", "disc_radius_mm": design.radius,
                                          "stops": None if stops is None else list(stops)}
         elif joint.type == "prismatic":
-            p_part, c_part, p_face, c_face, extra_loose, record = design_prismatic(
-                joint, parent, child, parent_extra, obstacle)
+            try:
+                p_part, c_part, p_face, c_face, extra_loose, record = design_prismatic(
+                    joint, parent, child, parent_extra, obstacle)
+            except JointLayoutError:
+                # Last resort: ignore the neighbors; the final pose check reports any clash.
+                p_part, c_part, p_face, c_face, extra_loose, record = design_prismatic(
+                    joint, parent, child, parent_extra, Pieces())
             loose += [(f"{n} {joint.name}", joint.parent, _place(part, frame),
                        _flat_on_bed(part, np.array([1.0, 0, 0]) if n == "pin" else np.array([0, 0, -1.0])))
                       for n, part in extra_loose]
@@ -1330,7 +1623,11 @@ def _robot_solids(robot: Robot) -> dict[str, object]:
 
 def _links_clear(real: dict, frames: dict, a: str, b: str) -> bool:
     """Whether the robot's own links ``a`` and ``b`` miss each other (to 1 mm^3) at these frames."""
-    return (_place(real[a], frames[a]) ^ _place(real[b], frames[b])).volume() <= 1.0
+    pa, pb = _place(real[a], frames[a]), _place(real[b], frames[b])
+    (la, ha), (lb, hb) = [np.array(p.bounding_box()).reshape(2, 3) for p in (pa, pb)]
+    if np.any(ha < lb) or np.any(hb < la):
+        return True
+    return (pa ^ pb).volume() <= 1.0
 
 
 def check_collisions(build: TwinBuild, samples: int = 40, seed: int = 0) -> list[str]:
@@ -1419,62 +1716,75 @@ def design_prismatic(joint: Joint, parent: CubeSolid, child: CubeSolid, parent_e
     parent_cube, child_cube = parent.manifold(), child.manifold()
     poses = [np.array([[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, v], [0, 0, 0, 1.0]]) for v in sweep_values(joint)]
     half_bar = BAR / 2
+    reasons: dict[str, int] = {}
+
+    def why(key):
+        reasons[key] = reasons.get(key, 0) + 1
+
     best = None
     perp_p, perp_c = np.array([pc[0], pc[1]]), np.array([cc[0], cc[1]])
     across = perp_c - perp_p
     side_dir = np.array([-across[1], across[0]]) / (np.linalg.norm(across) + 1e-9)
-    for t in (0.5, 0.35, 0.65, 0.2, 0.8):
-        for shift in (0.0, 15.0, -15.0, 30.0, -30.0):
-            xy = perp_p + t * across + shift * side_dir
-            for root_low in (True, False):
-                for s0 in sorted(np.arange(cc[2] - 40.0, cc[2] + 40.0, 4.0), key=lambda z: abs(z - cc[2])):
-                    sleeve_lo, sleeve_hi = s0, s0 + SLEEVE_LEN       # at q = 0, child frame along z
-                    if root_low:
-                        bar_lo = sleeve_lo + lower - SLIDE_CLEAR - STOP_BLOCK
-                        bar_hi = sleeve_hi + upper + SLIDE_CLEAR + CAP_LEN
-                        root = (bar_lo, bar_lo + STOP_BLOCK)
-                        cap = (bar_hi - CAP_LEN, bar_hi)
-                    else:
-                        bar_hi = sleeve_hi + upper + SLIDE_CLEAR + STOP_BLOCK
-                        bar_lo = sleeve_lo + lower - SLIDE_CLEAR - CAP_LEN
-                        root = (bar_hi - STOP_BLOCK, bar_hi)
-                        cap = (bar_lo, bar_lo + CAP_LEN)
-                    x, y = xy
-                    bar = Manifold.cube((BAR, BAR, bar_hi - bar_lo)).translate((x - half_bar, y - half_bar, bar_lo))
-                    big = BAR + 2 * SLEEVE_WALL
-                    root_block = Manifold.cube((big, big, STOP_BLOCK)).translate((x - big / 2, y - big / 2, root[0]))
-                    cap_block = Manifold.cube((big, big, CAP_LEN)).translate((x - big / 2, y - big / 2, cap[0]))
-                    sleeve = Manifold.cube((big, big, SLEEVE_LEN)).translate((x - big / 2, y - big / 2, sleeve_lo))
-                    root_c = np.array([x, y, (root[0] + root[1]) / 2])
-                    p_face, p_slab = _slab_toward(parent, root_c)
-                    root_pts = np.array([[x + sx * big / 2, y + sy * big / 2, z] for sx in (-1, 1) for sy in (-1, 1)
-                                         for z in root])
-                    # Straight from the bar's fixed end down to the face plane, then along it,
-                    # so the strut stays out of the sleeve's path.
-                    _, face_c, normal = parent.mount(root_c)
-                    foot = root_pts - np.outer((root_pts - face_c) @ normal - MOUNT_SLAB, normal)
-                    p_strut = _hull(np.vstack([root_pts, foot])) + _hull(np.vstack([foot, p_slab]))
-                    c_face, c_slab = _slab_toward(child, np.array([x, y, (sleeve_lo + sleeve_hi) / 2]))
-                    sleeve_pts = np.array([[x + sx * big / 2, y + sy * big / 2, z] for sx in (-1, 1)
-                                           for sy in (-1, 1) for z in (sleeve_lo, sleeve_hi)])
-                    c_strut = _hull(np.vstack([sleeve_pts, c_slab]))
-                    channel = Manifold.cube((BAR + 2 * SLIDE_CLEAR, BAR + 2 * SLIDE_CLEAR, 1e3)).translate(
-                        (x - half_bar - SLIDE_CLEAR, y - half_bar - SLIDE_CLEAR, -500.0))
-                    p_part = bar + root_block + p_strut
-                    c_part = (sleeve + c_strut) - channel
-                    if (p_strut ^ parent.manifold(0.3)).volume() > 1e-3 or (c_strut ^ child.manifold(0.3)).volume() > 1e-3:
-                        continue
-                    if obstacle.hits(p_part) or obstacle.hits(cap_block):
-                        continue
-                    static = Pieces([parent_cube, p_part, cap_block]).extend(parent_extra).extend(obstacle)
-                    if any(static.hits(_place(c_part + child_cube, pose)) for pose in poses):
-                        continue
-                    cost = p_strut.volume() + c_strut.volume() + bar.volume()
-                    if best is None or cost < best[0]:
-                        best = (cost, p_part, c_part, p_face, c_face, cap_block, (x, y), cap)
-                    break
+    # Bar positions between the two cubes and to either side, nearest the middle first.
+    spots = sorted(((t, sh) for t in (0.5, 0.35, 0.65, 0.2, 0.8, 0.0, 1.0)
+                    for sh in (0.0, 15.0, -15.0, 30.0, -30.0, 45.0, -45.0, 60.0, -60.0)),
+                   key=lambda ts: abs(ts[0] - 0.5) * 60 + abs(ts[1]))
+    for t, shift in spots:
+        xy = perp_p + t * across + shift * side_dir
+        for root_low in (True, False):
+            for s0 in sorted(np.arange(cc[2] - 40.0, cc[2] + 40.0, 4.0), key=lambda z: abs(z - cc[2])):
+                sleeve_lo, sleeve_hi = s0, s0 + SLEEVE_LEN       # at q = 0, child frame along z
+                if root_low:
+                    bar_lo = sleeve_lo + lower - SLIDE_CLEAR - STOP_BLOCK
+                    bar_hi = sleeve_hi + upper + SLIDE_CLEAR + CAP_LEN
+                    root = (bar_lo, bar_lo + STOP_BLOCK)
+                    cap = (bar_hi - CAP_LEN, bar_hi)
+                else:
+                    bar_hi = sleeve_hi + upper + SLIDE_CLEAR + STOP_BLOCK
+                    bar_lo = sleeve_lo + lower - SLIDE_CLEAR - CAP_LEN
+                    root = (bar_hi - STOP_BLOCK, bar_hi)
+                    cap = (bar_lo, bar_lo + CAP_LEN)
+                x, y = xy
+                bar = Manifold.cube((BAR, BAR, bar_hi - bar_lo)).translate((x - half_bar, y - half_bar, bar_lo))
+                big = BAR + 2 * SLEEVE_WALL
+                root_block = Manifold.cube((big, big, STOP_BLOCK)).translate((x - big / 2, y - big / 2, root[0]))
+                cap_block = Manifold.cube((big, big, CAP_LEN)).translate((x - big / 2, y - big / 2, cap[0]))
+                sleeve = Manifold.cube((big, big, SLEEVE_LEN)).translate((x - big / 2, y - big / 2, sleeve_lo))
+                root_c = np.array([x, y, (root[0] + root[1]) / 2])
+                p_face, p_slab = _slab_toward(parent, root_c)
+                root_pts = np.array([[x + sx * big / 2, y + sy * big / 2, z] for sx in (-1, 1) for sy in (-1, 1)
+                                     for z in root])
+                # Straight from the bar's fixed end down to the face plane, then along it,
+                # so the strut stays out of the sleeve's path.
+                _, face_c, normal = parent.mount(root_c)
+                foot = root_pts - np.outer((root_pts - face_c) @ normal - MOUNT_SLAB, normal)
+                p_strut = _hull(np.vstack([root_pts, foot])) + _hull(np.vstack([foot, p_slab]))
+                c_face, c_slab = _slab_toward(child, np.array([x, y, (sleeve_lo + sleeve_hi) / 2]))
+                sleeve_pts = np.array([[x + sx * big / 2, y + sy * big / 2, z] for sx in (-1, 1)
+                                       for sy in (-1, 1) for z in (sleeve_lo, sleeve_hi)])
+                c_strut = _hull(np.vstack([sleeve_pts, c_slab]))
+                channel = Manifold.cube((BAR + 2 * SLIDE_CLEAR, BAR + 2 * SLIDE_CLEAR, 1e3)).translate(
+                    (x - half_bar - SLIDE_CLEAR, y - half_bar - SLIDE_CLEAR, -500.0))
+                p_part = bar + root_block + p_strut
+                c_part = (sleeve + c_strut) - channel
+                if (p_strut ^ parent.manifold(0.3)).volume() > 1e-3 or (c_strut ^ child.manifold(0.3)).volume() > 1e-3:
+                    why("a strut cuts its own cube")
+                    continue
+                if obstacle.hits(p_part) or obstacle.hits(cap_block):
+                    why("the bar hits a neighboring link")
+                    continue
+                static = Pieces([parent_cube, p_part, cap_block]).extend(parent_extra)
+                if any(static.hits(_place(c_part + child_cube, pose)) for pose in poses):
+                    why("the sleeve side collides with the bar side while sliding")
+                    continue
+                cost = p_strut.volume() + c_strut.volume() + bar.volume()
+                if best is None or cost < best[0]:
+                    best = (cost, p_part, c_part, p_face, c_face, cap_block, (x, y), cap)
+                break
     if best is None:
-        raise ValueError(f"joint '{joint.name}': no collision-free slider layout found; try a larger --scale")
+        top = ", ".join(f"{k} ({v})" for k, v in sorted(reasons.items(), key=lambda kv: -kv[1])[:3])
+        raise JointLayoutError(joint.name, f"joint '{joint.name}': no collision-free slider layout found "
+                                           f"(rejected: {top}); try a different --scale")
     _, p_part, c_part, p_face, c_face, cap_block, (x, y), cap = best
     # Cross pin through cap and bar.
     zc = (cap[0] + cap[1]) / 2
@@ -1572,6 +1882,7 @@ def twin_record(build: TwinBuild, source: str, scale: float) -> dict:
             "markers": {face: int(tid) for face, (tid, _) in link.markers.items()},
             "mount_faces": sorted(link.mounts),
             "hull_overshoot_mm": round(link.cube.overshoot, 3),
+            "merged_links": build.robot.links[name].merged,
         }
     joints = []
     for joint in build.robot.joints:
@@ -1588,6 +1899,8 @@ def twin_record(build: TwinBuild, source: str, scale: float) -> dict:
         "root": build.robot.root,
         "links": links,
         "joints": joints,
+        "mimic_joints": [{"name": j.name, "type": j.type, "follows": j.mimic[0], "multiplier": j.mimic[1],
+                          "offset": j.mimic[2]} for j in build.robot.mimics],
         "files": dict(TWIN_FILES),
         "warnings": build.warnings,
     }
@@ -1730,6 +2043,11 @@ def write_twin_readme(build: TwinBuild, record: dict, out_dir: str) -> None:
         for j in record["joints"]
     )
     warnings = "\n".join(f"- {w}" for w in record["warnings"]) or "None."
+    reduced = [f"- `{name}` also carries {', '.join(f'`{m}`' for m in info['merged_links'])} (fixed joints)."
+               for name, info in record["links"].items() if info["merged_links"]]
+    reduced += [f"- `{m['name']}` is not built; it follows `{m['follows']}`: "
+                f"value = {m['multiplier']:.6g} * {m['follows']} + {m['offset']:.6g}." for m in record["mimic_joints"]]
+    reduced_md = ("\n## Simplified\n\n" + "\n".join(reduced) + "\n") if reduced else ""
     md = f"""# Printed twin of `{record['robot']}`
 
 ![Twin preview]({files['preview']})
@@ -1750,7 +2068,7 @@ the joint angles. Scale: {record['scale']:g}.
 | Joint | Type | Links | Hardware | Hard stops |
 |-------|------|-------|----------|------------|
 {joint_rows}
-
+{reduced_md}
 ## Printing
 
 | File | What | Color |
@@ -1814,10 +2132,19 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("-t", "--ids", default=None, help="tag IDs: range (0-40) or comma-separated")
     parser.add_argument("--package-path", action="append", default=[], metavar="PKG=DIR",
                         help="where to find a ROS package for package:// mesh paths (repeatable)")
+    parser.add_argument("--mesh-dir", action="append", default=[], metavar="DIR",
+                        help="directory to search for meshes the robot file points to but that are not there "
+                             "(repeatable)")
     parser.add_argument("--mono-clearance", type=float, default=None,
                         help="per-side gap between black lattice and white plate (default: 0.15)")
     parser.add_argument("--last-link", default=None, metavar="LINK",
                         help="stop the twin at this link: links beyond it (e.g. the gripper) are left out")
+    parser.add_argument("--keep-fixed", action="store_true",
+                        help="give links joined by fixed joints their own cubes, connected by printed struts "
+                             "(default: one cube per rigid group)")
+    parser.add_argument("--keep-mimic", action="store_true",
+                        help="build mimic joints as independent joints (default: leave them out; they follow "
+                             "the joint they mimic)")
     parser.add_argument("--quick", action="store_true", help="fewer cube orientations and collision poses")
     args = parser.parse_args(argv)
 
@@ -1843,9 +2170,12 @@ def main(argv: list[str] | None = None) -> None:
         mono_cfg.fit_clearance_mm = args.mono_clearance
 
     try:
-        robot = drop_empty_links(load_robot(args.robot, packages, args.scale))
+        robot = load_robot(args.robot, packages, args.scale, [Path(d) for d in args.mesh_dir])
         if args.last_link:
             robot = cut_after(robot, args.last_link)
+        if not args.keep_mimic:
+            robot = drop_mimic(robot)
+        robot = drop_empty_links(robot, merge_fixed=not args.keep_fixed)
         ids = parse_ids(args.ids, 6 * len(robot.links)) if args.ids else None
         print(f"Robot '{robot.name}': {len(robot.links)} links, {len(robot.joints)} joints, scale {args.scale:g}")
         build = build_twin(robot, args.dict, mono_cfg, ids=ids,

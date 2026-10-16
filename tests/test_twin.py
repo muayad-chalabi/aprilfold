@@ -16,7 +16,7 @@ DEMO = Path(__file__).parent / "data" / "twin_demo.urdf"
 
 @pytest.fixture(scope="module")
 def demo():
-    robot = twin.drop_empty_links(twin.load_robot(DEMO))
+    robot = twin.drop_empty_links(twin.load_robot(DEMO), merge_fixed=False)
     build = twin.build_twin(robot, "4x4_250", generate.MonoConfig(enabled=True), samples=40, check_samples=10)
     return robot, build
 
@@ -55,6 +55,53 @@ def test_cut_after_drops_the_links_beyond():
     assert [j.name for j in robot.joints] == ["slide"]
     with pytest.raises(ValueError, match="no link 'gripper'"):
         twin.cut_after(robot, "gripper")
+
+
+def test_fixed_links_merge_and_mimic_joints_drop(tmp_path):
+    urdf = tmp_path / "r.urdf"
+    urdf.write_text("""<robot name="r">
+      <link name="world"/>
+      <link name="plate"><visual><geometry><box size="0.3 0.3 0.002"/></geometry></visual></link>
+      <link name="a"><visual><geometry><box size="0.1 0.1 0.1"/></geometry></visual></link>
+      <link name="servo"><visual><geometry><box size="0.04 0.04 0.04"/></geometry></visual></link>
+      <link name="b"><visual><geometry><box size="0.1 0.1 0.1"/></geometry></visual></link>
+      <link name="finger"><visual><geometry><box size="0.02 0.02 0.05"/></geometry></visual></link>
+      <joint name="p" type="fixed"><parent link="world"/><child link="plate"/></joint>
+      <joint name="w" type="fixed"><parent link="world"/><child link="a"/></joint>
+      <joint name="s" type="fixed"><parent link="a"/><child link="servo"/><origin xyz="0.1 0 0"/></joint>
+      <joint name="j" type="revolute"><parent link="servo"/><child link="b"/><origin xyz="0.1 0 0"/>
+        <axis xyz="0 0 1"/><limit lower="-1" upper="1" effort="1" velocity="1"/></joint>
+      <joint name="f" type="prismatic"><parent link="b"/><child link="finger"/><origin xyz="0.05 0 0"/>
+        <axis xyz="1 0 0"/><limit lower="0" upper="0.02" effort="1" velocity="1"/>
+        <mimic joint="j" multiplier="0.01" offset="0"/></joint>
+    </robot>""")
+    robot = twin.drop_empty_links(twin.drop_mimic(twin.load_robot(urdf)))
+    assert robot.root == "a" and set(robot.links) == {"a", "b"}
+    assert sorted(robot.links["a"].merged) == ["plate", "servo"]
+    (joint,) = robot.joints
+    assert joint.parent == "a" and np.allclose(joint.origin[:3, 3], [200.0, 0.0, 0.0])
+    (mimic,) = robot.mimics
+    assert mimic.name == "f" and mimic.mimic == ("j", pytest.approx(10.0), 0.0)   # mm per rad
+
+
+def test_mimic_group_keeps_its_largest_link(tmp_path):
+    urdf = tmp_path / "r.urdf"
+    urdf.write_text("""<robot name="r">
+      <link name="a"><visual><geometry><box size="0.1 0.1 0.1"/></geometry></visual></link>
+      <link name="gear"><visual><geometry><box size="0.01 0.01 0.01"/></geometry></visual></link>
+      <link name="jaw"><visual><geometry><box size="0.05 0.05 0.05"/></geometry></visual></link>
+      <joint name="g" type="revolute"><parent link="a"/><child link="gear"/>
+        <axis xyz="0 0 1"/><limit lower="0" upper="2" effort="1" velocity="1"/></joint>
+      <joint name="s" type="prismatic"><parent link="a"/><child link="jaw"/><origin xyz="0.1 0 0"/>
+        <axis xyz="1 0 0"/><limit lower="0" upper="0.02" effort="1" velocity="1"/>
+        <mimic joint="g" multiplier="0.01" offset="0.002"/></joint>
+    </robot>""")
+    robot = twin.drop_mimic(twin.load_robot(urdf))
+    assert set(robot.links) == {"a", "jaw"} and robot.joints[0].mimic is None
+    (gear,) = robot.mimics
+    # g = (s - 2 mm) / (10 mm/rad)
+    assert gear.name == "g" and gear.mimic[0] == "s"
+    assert gear.mimic[1] == pytest.approx(0.1) and gear.mimic[2] == pytest.approx(-0.2)
 
 
 def test_largest_cube_in_a_box():
@@ -153,7 +200,7 @@ def test_link_configs_put_corners_on_the_black_border(demo, tmp_path):
 
 def test_cli_writes_twin(tmp_path):
     out = tmp_path / "demo"
-    twin.main([str(DEMO), "--quick", "-o", str(out)])
+    twin.main([str(DEMO), "--quick", "--keep-fixed", "-o", str(out)])
     record = json.loads((out / "twin.json").read_text())
     assert record["root"] == "base" and len(record["joints"]) == 4
     assert {j["hardware"] for j in record["joints"]} == {"knuckle", "slider", "strut"}

@@ -10,25 +10,25 @@
   "root": "base",
   "links": {
     "base": {
-      "cube_edge_mm": 46.2421,
+      "cube_edge_mm": 46.6511,
       "cube_pose_mm": [
         [
           1.0,
           0.0,
           0.0,
-          17.457726
+          17.602633
         ],
         [
           0.0,
           1.0,
           0.0,
-          17.092035
+          17.294327
         ],
         [
           0.0,
           0.0,
           1.0,
-          61.78324
+          62.594174
         ],
         [
           0.0,
@@ -48,7 +48,8 @@
       "mount_faces": [
         "+Z"
       ],
-      "hull_overshoot_mm": 0.0
+      "hull_overshoot_mm": 0.0,
+      "merged_links": []
     },
     "shoulder": {
       "cube_edge_mm": 34.5,
@@ -57,19 +58,19 @@
           1.0,
           0.0,
           0.0,
-          -34.374761
+          -34.403248
         ],
         [
           0.0,
           1.0,
           0.0,
-          -4.501656
+          -4.561011
         ],
         [
           0.0,
           0.0,
           1.0,
-          -13.388471
+          -13.033646
         ],
         [
           0.0,
@@ -83,13 +84,14 @@
         "+X": 6,
         "-X": 7,
         "+Y": 10,
-        "-Z": 11
+        "-Y": 11
       },
       "mount_faces": [
         "+Z",
-        "-Y"
+        "-Z"
       ],
-      "hull_overshoot_mm": 2.888
+      "hull_overshoot_mm": 2.889,
+      "merged_links": []
     },
     "upper_arm": {
       "cube_edge_mm": 34.5,
@@ -104,13 +106,13 @@
           0.0,
           1.0,
           0.0,
-          -3.715595
+          -3.321732
         ],
         [
           0.0,
           0.0,
           1.0,
-          31.942945
+          32.716973
         ],
         [
           0.0,
@@ -130,7 +132,8 @@
       "mount_faces": [
         "-Z"
       ],
-      "hull_overshoot_mm": 4.445
+      "hull_overshoot_mm": 4.922,
+      "merged_links": []
     },
     "lower_arm": {
       "cube_edge_mm": 34.5,
@@ -139,19 +142,19 @@
           1.0,
           0.0,
           0.0,
-          -59.105061
+          -65.938623
         ],
         [
           0.0,
           1.0,
           0.0,
-          1.291374
+          1.073831
         ],
         [
           0.0,
           0.0,
           1.0,
-          -4.557055
+          -3.783027
         ],
         [
           0.0,
@@ -162,16 +165,17 @@
       ],
       "config": "links/lower_arm/config.json",
       "markers": {
-        "+X": 18,
-        "-X": 20,
-        "+Y": 21,
-        "-Y": 22
+        "-X": 18,
+        "+Y": 20,
+        "-Y": 21,
+        "+Z": 22
       },
       "mount_faces": [
-        "+Z",
+        "+X",
         "-Z"
       ],
-      "hull_overshoot_mm": 13.676
+      "hull_overshoot_mm": 12.846,
+      "merged_links": []
     },
     "wrist": {
       "cube_edge_mm": 34.5,
@@ -186,13 +190,13 @@
           0.0,
           1.0,
           0.0,
-          -25.849771
+          -25.889204
         ],
         [
           0.0,
           0.0,
           1.0,
-          50.276193
+          50.216838
         ],
         [
           0.0,
@@ -212,7 +216,8 @@
         "-Y",
         "-Z"
       ],
-      "hull_overshoot_mm": 19.427
+      "hull_overshoot_mm": 18.991,
+      "merged_links": []
     },
     "gripper": {
       "cube_edge_mm": 34.5,
@@ -221,13 +226,13 @@
           1.0,
           0.0,
           0.0,
-          -14.241825
+          -14.049296
         ],
         [
           0.0,
           1.0,
           0.0,
-          9.265529
+          -18.456557
         ],
         [
           0.0,
@@ -246,14 +251,15 @@
       "markers": {
         "+X": 27,
         "-X": 28,
-        "+Y": 29,
-        "-Y": 30,
-        "-Z": 31
+        "-Y": 29,
+        "-Z": 30
       },
       "mount_faces": [
+        "+Y",
         "+Z"
       ],
-      "hull_overshoot_mm": 14.017
+      "hull_overshoot_mm": 20.979,
+      "merged_links": []
     },
     "jaw": {
       "cube_edge_mm": 34.5,
@@ -262,19 +268,19 @@
           1.0,
           0.0,
           0.0,
-          -18.275566
+          -3.355915
         ],
         [
           0.0,
           1.0,
           0.0,
-          -19.664085
+          -35.583586
         ],
         [
           0.0,
           0.0,
           1.0,
-          46.03458
+          0.756539
         ],
         [
           0.0,
@@ -285,16 +291,17 @@
       ],
       "config": "links/jaw/config.json",
       "markers": {
-        "+X": 32,
-        "-X": 33,
-        "+Y": 34,
-        "-Y": 35,
-        "+Z": 36
+        "+X": 31,
+        "-X": 32,
+        "+Y": 33,
+        "-Y": 34,
+        "-Z": 35
       },
       "mount_faces": [
-        "-Z"
+        "+Z"
       ],
-      "hull_overshoot_mm": 37.411
+      "hull_overshoot_mm": 26.094,
+      "merged_links": []
     }
   },
   "joints": [
@@ -342,8 +349,8 @@
         -0.174533,
         1.74533
       ],
-      "parent_face": "+Z",
-      "child_face": "-Z"
+      "parent_face": "+Y",
+      "child_face": "+Z"
     },
     {
       "name": "wrist_roll",
@@ -484,7 +491,7 @@
         1.5708
       ],
       "parent_face": "-Z",
-      "child_face": "+Z"
+      "child_face": "+X"
     },
     {
       "name": "shoulder_lift",
@@ -530,7 +537,7 @@
         -1.74533,
         1.74533
       ],
-      "parent_face": "-Y",
+      "parent_face": "-Z",
       "child_face": "-Z"
     },
     {
@@ -581,6 +588,7 @@
       "child_face": "+Z"
     }
   ],
+  "mimic_joints": [],
   "files": {
     "black": "print_black.3mf",
     "white": "print_white.3mf",
@@ -591,12 +599,11 @@
     "preview": "twin_preview.png"
   },
   "warnings": [
-    "links 'gripper' and 'shoulder' collide (100.3 mm^3) where the robot does not, at gripper=0.11, wrist_roll=2.64, wrist_flex=1.29, elbow_flex=0.98, shoulder_lift=-0.07, shoulder_pan=-1.03",
-    "link 'shoulder': its hull only fits a 32.8 mm cube; using the 34.5 mm minimum, which sticks out up to 2.9 mm",
-    "link 'upper_arm': its hull only fits a 30.8 mm cube; using the 34.5 mm minimum, which sticks out up to 4.4 mm",
-    "link 'lower_arm': its hull only fits a 22.7 mm cube; using the 34.5 mm minimum, which sticks out up to 13.7 mm",
-    "link 'wrist': its hull only fits a 20.2 mm cube; using the 34.5 mm minimum, which sticks out up to 19.4 mm",
-    "link 'gripper': its hull only fits a 25.4 mm cube; using the 34.5 mm minimum, which sticks out up to 14.0 mm",
-    "link 'jaw': its hull only fits a 13.6 mm cube; using the 34.5 mm minimum, which sticks out up to 37.4 mm"
+    "link 'wrist': its hull only fits a 20.3 mm cube; using the 34.5 mm minimum, which sticks out up to 19.0 mm",
+    "link 'gripper': its hull only fits a 20.0 mm cube; using the 34.5 mm minimum, which sticks out up to 21.0 mm",
+    "link 'jaw': its hull only fits a 15.6 mm cube; using the 34.5 mm minimum, which sticks out up to 26.1 mm",
+    "link 'upper_arm': its hull only fits a 30.6 mm cube; using the 34.5 mm minimum, which sticks out up to 4.9 mm",
+    "link 'shoulder': its hull only fits a 32.7 mm cube; using the 34.5 mm minimum, which sticks out up to 2.9 mm",
+    "link 'lower_arm': its hull only fits a 23.4 mm cube; using the 34.5 mm minimum, which sticks out up to 12.8 mm"
   ]
 }
