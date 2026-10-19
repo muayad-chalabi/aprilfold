@@ -1,12 +1,16 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling>=1.26"]
 build-backend = "hatchling.build"
 
 [project]
-name = "aprilcube"
-version = "0.3.1"
-description = "Generate and detect ArUco/AprilTag cubes for 6-DOF pose estimation"
+name = "aprilfold"
+version = "0.1.0"
+description = "Foldable single-color AprilTag/ArUco cubes and printed robot twins for 6-DoF pose tracking"
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "aprilfold contributors" }]
+keywords = ["apriltag", "aruco", "fiducial", "pose-estimation", "3d-printing", "teleoperation", "urdf"]
 requires-python = ">=3.10"
 dependencies = [
     "opencv-contrib-python>=4.8,<5",
@@ -31,13 +35,14 @@ test = [
 ]
 
 [project.scripts]
-aprilcube = "aprilcube.cli:main"
+aprilfold = "aprilfold.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/younghyopark/aprilcube"
-Documentation = "https://github.com/younghyopark/aprilcube/blob/main/docs/usage.md"
-Issues = "https://github.com/younghyopark/aprilcube/issues"
-Changelog = "https://github.com/younghyopark/aprilcube/blob/main/CHANGELOG.md"
+Homepage = "https://github.com/muayad-chalabi/aprilfold"
+Documentation = "https://github.com/muayad-chalabi/aprilfold/blob/main/docs/usage.md"
+Issues = "https://github.com/muayad-chalabi/aprilfold/issues"
+Changelog = "https://github.com/muayad-chalabi/aprilfold/blob/main/CHANGELOG.md"
+Upstream = "https://github.com/younghyopark/aprilcube"
 
 [tool.hatch.build.targets.sdist]
 include = [
@@ -48,9 +53,11 @@ include = [
     "/assets/end_effector_connector.stl",
     "/docs/usage.md",
     "/README.md",
+    "/LICENSE",
+    "/NOTICE.md",
     "/CHANGELOG.md",
     "/pyproject.toml",
 ]
 
 [tool.hatch.build.targets.wheel.force-include]
-"assets/end_effector_connector.stl" = "aprilcube/assets/end_effector_connector.stl"
+"assets/end_effector_connector.stl" = "aprilfold/assets/end_effector_connector.stl"

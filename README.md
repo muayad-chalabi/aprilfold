@@ -1,21 +1,111 @@
-# aprilcube
+# AprilFold
 
-![](https://raw.githubusercontent.com/younghyopark/aprilcube/main/assets/printing_process.gif)
+![AprilFold: a foldable single-color marker cube, exploded](https://raw.githubusercontent.com/muayad-chalabi/aprilfold/main/assets/aprilfold-thumbnail.png)
 
-Generate 3D-printable fiducial targets with ArUco or AprilTag markers, then detect their 6-DOF pose from a camera. Targets can be simple cubes/cuboids or voxel-composed shapes such as T-shapes, chairs, frames, and stair-step objects.
+**Fiducial marker cubes for any 3D printer, and printed robot twins built from
+them.**
 
-**aprilcube** is a two-part pipeline:
+AprilFold generates AprilTag/ArUco targets that print in one color at a time.
+Each cube is a flat net that folds shut and locks itself, and every marker face
+is a white plate with a black lattice that snaps on. No multi-material printer,
+glue or tape is needed. A camera then tracks the cube's full 6-DoF pose.
 
-1. **Generator** - creates a multi-color 3MF file with markers on the target surface, ready for dual-color 3D printing.
-2. **Detector** - detects the printed target in a camera image and estimates its full 6-DOF pose.
+On top of that, `aprilfold twin` turns a robot's URDF into a printed kinematic
+twin, one foldable cube per link, joined by printed joints with hard stops at
+the URDF limits. Move the twin by hand, track the cubes, and you have the joint
+angles to teleoperate the real robot from vision alone.
 
-![Voxel shape gallery](https://raw.githubusercontent.com/younghyopark/aprilcube/main/docs/voxel_shape_gallery.png)
+AprilFold is built on [**aprilcube**](https://github.com/younghyopark/aprilcube)
+by Younghyo Park. The marker layout, voxel targets and the detector come from
+aprilcube; AprilFold adds the foldable single-color build and robot twins.
 
-## Technical Report
+| Fold and assemble | Robot twin (SO-101, 1:1) |
+|---|---|
+| ![Folding and assembling a cube](https://raw.githubusercontent.com/muayad-chalabi/aprilfold/main/assets/fold_assembly.gif) | ![SO-101 and its printed twin](https://raw.githubusercontent.com/muayad-chalabi/aprilfold/main/assets/so101_twin.gif) |
 
-Read the technical report: [AprilCube: 3D-Printable Fiducial Targets for Reliable 6-DoF Pose Estimation](https://github.com/younghyopark/aprilcube/blob/main/docs/paper.pdf).
+## Install
 
-If you use AprilCube in research, please cite:
+```bash
+pip install 'aprilfold[mono]'     # foldable cubes and voxel targets
+pip install 'aprilfold[twin]'     # + robot twins
+```
+
+Python 3.10 or newer. From a checkout: `pip install -e '.[twin,test]'`.
+
+## Foldable cube
+
+```bash
+aprilfold generate --grid 1x1x1 --dict 4x4_50 --tag-size 30 --mono -o my_cube
+```
+
+Print three files: `print_net.3mf` in any color, `print_white.3mf` in white and
+`print_black.3mf` in black. Then:
+
+1. Fold the `X` panels up, then the `Y` panels (their tabs slide into the `X`
+   panels), then close the `+Z` lid until it clicks.
+2. Lay each white plate on its panel; the panel is engraved with its tag ID.
+3. Press each black lattice in: its barbed legs clamp lattice, plate and panel
+   in one click.
+
+Larger grids and voxel shapes (a 3x3x3 cube, a ring, a T) are built from cube
+modules joined by printed rivets, so any shape assembles, loops included:
+
+```bash
+aprilfold generate --grid 3x3x3 --dict apriltag_36h11 --tag-size 30 --border-cell 1.5 --mono
+aprilfold generate examples/foldable_ring.yaml        # also examples/foldable_t_shape.yaml
+```
+
+![Foldable targets](https://raw.githubusercontent.com/muayad-chalabi/aprilfold/main/assets/showcase.png)
+
+## Robot twin
+
+```bash
+aprilfold twin so101.urdf.xacro -o so101_twin
+aprilfold twin robot.urdf --scale 1.5 --last-link wrist -o arm_twin
+```
+
+The twin generator:
+
+- fits the largest cube inside each link's convex hull;
+- merges links joined by fixed joints into one body;
+- builds one joint of each mimic group;
+- designs a friction knuckle with hard stops for each revolute joint, and a bar
+  and sleeve for each prismatic joint;
+- checks the whole twin for self-collision across the joint ranges.
+
+It writes one detector config per link, in that link's frame, and a
+`twin.json` with the kinematic chain. Tested on the SO-101 and ElRobot arms
+(1:1), the KUKA iiwa 14 (0.3x) and the Microduck biped (2x).
+[models/so101_twin](models/so101_twin/README.md) is a complete example.
+
+## Track
+
+```python
+import aprilfold
+
+det = aprilfold.detector("my_cube/config.json", {"fx": 800, "fy": 800, "cx": 320, "cy": 240})
+result = det.process_frame(frame)        # BGR image
+if result["success"]:
+    T = result["T"]                      # 4x4 pose in the camera frame, mm
+```
+
+Multi-marker PnP with RANSAC and an error-state Kalman filter, async
+detection, world-frame poses and a 3D `viser` view are built in. The same
+detector reads cube, voxel-target and twin-link configs.
+
+## Documentation
+
+- [User guide](docs/usage.md): printing and assembly, fit tuning, voxel
+  targets, robot twins, the tracking API, and all options.
+- [Changelog](CHANGELOG.md)
+
+## Credits
+
+AprilFold is a derivative of
+[aprilcube](https://github.com/younghyopark/aprilcube) (MIT License) by
+Younghyo Park, starting from aprilcube 0.3.1 with its git history kept. See
+[NOTICE.md](NOTICE.md) for what comes from where. If you use the targets or
+the detector in research, please cite aprilcube:
 
 ```bibtex
 @software{park2026aprilcube,
@@ -26,125 +116,7 @@ If you use AprilCube in research, please cite:
 }
 ```
 
-[![Star History Chart](https://api.star-history.com/chart?repos=younghyopark/aprilcube&type=date&legend=top-left)](https://www.star-history.com/?repos=younghyopark%2Faprilcube&type=date&legend=top-left)
-
-## Installation
-
-```bash
-pip install aprilcube
-```
-
-Requires Python 3.10+ and installs OpenCV 4.x (`opencv-contrib-python`), `numpy`, and `pyyaml`.
-
-## Basic Usage
-
-### Generate a target
-
-Generate a classic cuboid target directly from the CLI:
-
-```bash
-aprilcube generate --grid 1x1x1 --dict 4x4_50 --tag-size 30 -o models/basic_cube
-```
-
-Generate a voxel-composed target from a YAML spec:
-
-```bash
-aprilcube generate examples/t_shape_target.yaml
-```
-
-### Robot end-effector mount
-
-Add the included connector and mounting rod to attach an AprilCube to a robot
-end effector, such as those on Franka and Flexiv arms:
-
-```bash
-aprilcube generate --tag-size 24 --grid 1x3x3 --dict 4x4_1000 \
-  --end-effector-connector --connector-rod-length 50 \
-  --connector-rod-radius 10
-```
-
-This cube is ready to print in [models/calibration_cube](models/calibration_cube)
-([cube.3mf](models/calibration_cube/cube.3mf)). [aiofranka](https://github.com/younghyopark/aiofranka)'s
-`aiofranka camera calibrate` holds it on a Franka's flange to locate a fixed camera
-relative to the robot.
-
-Open the standalone voxel designer and export a YAML spec:
-
-```bash
-aprilcube web
-```
-
-Generated model directories contain `cube.3mf`, `config.json`, `thumbnail.png`, and MuJoCo/OBJ visualization assets under `mujoco/`.
-
-### Detect pose
-
-Given a BGR camera frame as a NumPy array:
-
-```python
-import aprilcube
-
-det = aprilcube.detector(
-    "models/basic_cube/config.json",
-    {"fx": 800, "fy": 800, "cx": 320, "cy": 240},
-)
-
-result = det.process_frame(frame)
-
-if result["success"]:
-    print(result["T"])              # 4x4 camera-frame pose
-    print(result["reproj_error"])   # Reprojection error in pixels
-```
-
-For detailed CLI options, YAML schemas, Python API notes, visualization, async detection, output formats, and detector internals, see [docs/usage.md](https://github.com/younghyopark/aprilcube/blob/main/docs/usage.md).
-
-## Printing
-
-AprilCube targets are designed for dual-color FDM printing on Bambu Lab printers with AMS or AMS Lite.
-
-1. Open the generated `cube.3mf` in Bambu Studio.
-2. Use filament colors: extruder 1 = black, extruder 2 = white. PLA is recommended.
-3. Slice and print. The 3MF uses `paint_color` attributes for automatic color assignment.
-
-The latest generated 3MF files include Bambu Studio 2.x project metadata for compatibility with current Bambu Studio releases.
-
-### Single-color printers
-
-Without a multi-color printer, `--mono` splits each face of a cube into a
-black lattice and a white plate that you print separately. They snap onto a
-net that prints flat and folds into the cube. Larger grids and voxel shapes
-are built from one such cube per voxel, riveted together:
-
-```bash
-pip install 'aprilcube[mono]'
-aprilcube generate --grid 1x1x1 --dict 4x4_50 --tag-size 30 --mono -o models/mono_cube
-```
-
-The output folder's README has print and assembly steps. See
-[Single-Color Printing](https://github.com/younghyopark/aprilcube/blob/main/docs/usage.md#single-color-printing)
-for how the parts lock together.
-
-### Robot twins
-
-`aprilcube twin` builds a printed kinematic twin of a robot from its URDF or
-xacro: one marker cube per link, as large as the link allows, joined by
-printed revolute, prismatic or fixed joints with hard stops at the URDF
-limits. Tracking the cubes gives every link's pose, for teleoperating the
-real robot from vision alone:
-
-```bash
-pip install 'aprilcube[twin]'
-aprilcube twin so101.urdf.xacro -o so101_twin
-```
-
-See [Robot Twins](https://github.com/younghyopark/aprilcube/blob/main/docs/usage.md#robot-twins).
-
-## Resources
-
-- [Detailed usage guide](https://github.com/younghyopark/aprilcube/blob/main/docs/usage.md)
-- [Technical report](https://github.com/younghyopark/aprilcube/blob/main/docs/paper.pdf)
-- [Voxel example gallery](https://github.com/younghyopark/aprilcube/blob/main/docs/voxel_shape_gallery.png)
-- [Changelog](https://github.com/younghyopark/aprilcube/blob/main/CHANGELOG.md)
-
 ## License
 
-MIT
+[MIT](LICENSE). Copyright Younghyo Park (aprilcube) and the AprilFold
+contributors.

@@ -1,4 +1,4 @@
-"""Standalone entry point for the browser-only AprilCube designer."""
+"""Standalone entry point for the browser-only AprilFold designer."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ def designer_path() -> Path:
 def main(argv: list[str] | None = None) -> None:
     """Open or print the static designer; no local server is required."""
     parser = argparse.ArgumentParser(
-        description="Open the standalone AprilCube voxel designer.",
+        description="Open the standalone AprilFold voxel designer.",
     )
     parser.add_argument(
         "--no-open",

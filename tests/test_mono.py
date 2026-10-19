@@ -11,8 +11,8 @@ import pytest
 
 pytest.importorskip("manifold3d")
 
-from aprilcube import generate, mono  # noqa: E402
-from aprilcube.detect import load_cube_config  # noqa: E402
+from aprilfold import generate, mono  # noqa: E402
+from aprilfold.detect import load_cube_config  # noqa: E402
 
 
 NS = {"m": "http://schemas.microsoft.com/3dmanufacturing/core/2015/02"}
@@ -44,7 +44,7 @@ def built():
 
 
 def _run_cli(monkeypatch, *args):
-    monkeypatch.setattr(sys, "argv", ["aprilcube generate", *args])
+    monkeypatch.setattr(sys, "argv", ["aprilfold generate", *args])
     generate.main()
 
 

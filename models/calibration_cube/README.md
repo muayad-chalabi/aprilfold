@@ -188,5 +188,5 @@
 ## Regenerate
 
 ```bash
-aprilcube generate --grid 1x3x3 --dict 4x4_1000 --tag-size 24 --margin-cell 1 --border-cell 1 --end-effector-connector --connector-rod-length 50 --connector-rod-radius 10 -o calibration_cube
+aprilfold generate --grid 1x3x3 --dict 4x4_1000 --tag-size 24 --margin-cell 1 --border-cell 1 --end-effector-connector --connector-rod-length 50 --connector-rod-radius 10 -o calibration_cube
 ```

@@ -6,7 +6,7 @@ import xml.etree.ElementTree as ET
 
 import pytest
 
-from aprilcube import generate
+from aprilfold import generate
 
 
 def _mesh_bounds_from_3mf(path):
@@ -36,7 +36,7 @@ def test_generate_end_effector_connector_extends_from_positive_z(tmp_path, monke
         sys,
         "argv",
         [
-            "aprilcube generate",
+            "aprilfold generate",
             "--grid",
             "1x1x1",
             "--dict",

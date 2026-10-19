@@ -149,5 +149,5 @@ regenerate with `--mono-clearance` (current: 0.15 mm per side).
 ## Regenerate
 
 ```bash
-aprilcube generate --grid 1x1x1 --dict 4x4_50 --tag-size 30 --margin-cell 1 --border-cell 1 --mono -o mono_cube
+aprilfold generate --grid 1x1x1 --dict 4x4_50 --tag-size 30 --margin-cell 1 --border-cell 1 --mono -o mono_cube
 ```

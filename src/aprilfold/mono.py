@@ -51,7 +51,7 @@ from uuid import uuid4
 import cv2
 import numpy as np
 
-from aprilcube.generate import (
+from aprilfold.generate import (
     FACE_DEFS,
     CubeConfig,
     MonoConfig,
@@ -127,7 +127,7 @@ def require_manifold() -> None:
     if Manifold is None:
         raise RuntimeError(
             "Single-color targets need the manifold3d package. "
-            "Install with `pip install 'aprilcube[mono]'`."
+            "Install with `pip install 'aprilfold[mono]'`."
         )
 
 
@@ -1024,7 +1024,7 @@ def write_3mf(path: str, objects: list[tuple[str, Manifold, str]], title: str) -
         '<model unit="millimeter" xml:lang="en-US"'
         ' xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">',
         f'  <metadata name="Title">{title}</metadata>',
-        '  <metadata name="Application">aprilcube</metadata>',
+        '  <metadata name="Application">aprilfold</metadata>',
         "  <resources>",
         '    <basematerials id="1">',
     ]
@@ -1230,12 +1230,12 @@ def write_mono_target(
     net = arrange([build.net], cols=1)
     write_3mf(os.path.join(out_dir, MONO_FILES["black"]),
               [(f"black {n} (tag {face_tag_map[n][0]})", part, COLORS["black"]) for n, part in zip(names, blacks)],
-              "AprilCube single-color black lattices")
+              "AprilFold single-color black lattices")
     write_3mf(os.path.join(out_dir, MONO_FILES["white"]),
               [(f"white {n} (tag {face_tag_map[n][0]})", part, COLORS["white"]) for n, part in zip(names, whites)],
-              "AprilCube single-color white plates")
+              "AprilFold single-color white plates")
     write_3mf(os.path.join(out_dir, MONO_FILES["net"]), [("net", net[0], COLORS["net"])],
-              "AprilCube single-color folding net")
+              "AprilFold single-color folding net")
 
     lift = (128.0, 128.0, half)
     assembly = [
@@ -1244,7 +1244,7 @@ def write_mono_target(
         for n in names
     ] + [(f"net hinge {i}", skin.translate(lift), COLORS["net"]) for i, skin in enumerate(build.hinges, 1)]
     write_3mf(os.path.join(out_dir, MONO_FILES["assembly"]), assembly,
-              "AprilCube single-color assembly (preview only, do not print)")
+              "AprilFold single-color assembly (preview only, do not print)")
     render_mono_preview(build, os.path.join(out_dir, MONO_FILES["preview"]))
 
     return {
@@ -1301,14 +1301,14 @@ def write_mono_voxel_target(
     cols = int(np.ceil(np.sqrt(len(blacks))))
     write_3mf(os.path.join(out_dir, MONO_VOXEL_FILES["black"]),
               [(f"black {lb}", p, COLORS["black"]) for lb, p in zip(labels, arrange(blacks, cols))],
-              "AprilCube single-color black lattices")
+              "AprilFold single-color black lattices")
     write_3mf(os.path.join(out_dir, MONO_VOXEL_FILES["white"]),
               [(f"white {lb}", p, COLORS["white"]) for lb, p in zip(labels, arrange(whites, cols))],
-              "AprilCube single-color white plates")
+              "AprilFold single-color white plates")
     nets = arrange([m.net for m in build.modules], int(np.ceil(np.sqrt(len(build.modules)))))
     write_3mf(os.path.join(out_dir, MONO_VOXEL_FILES["net"]),
               [(f"net module {k}", p, COLORS["net"]) for k, p in enumerate(nets, 1)],
-              "AprilCube single-color module nets")
+              "AprilFold single-color module nets")
 
     joint_parts = []
     for j in build.joints:
@@ -1326,7 +1326,7 @@ def write_mono_voxel_target(
         placed = arrange([p for _, p, _ in joint_parts], int(np.ceil(np.sqrt(len(joint_parts)))))
         write_3mf(os.path.join(out_dir, MONO_VOXEL_FILES["joints"]),
                   [(n, p, c) for (n, _, c), p in zip(joint_parts, placed)],
-                  "AprilCube single-color spacers and rivets")
+                  "AprilFold single-color spacers and rivets")
 
     lift = np.array([128.0, 128.0, 0.0])
     assembly = []
@@ -1341,7 +1341,7 @@ def write_mono_voxel_target(
     floor = min(np.array(p.bounding_box())[2] for _, p, _ in assembly)
     write_3mf(os.path.join(out_dir, MONO_VOXEL_FILES["assembly"]),
               [(n, p.translate(tuple(lift - [0, 0, floor])), c) for n, p, c in assembly],
-              "AprilCube single-color assembly (preview only, do not print)")
+              "AprilFold single-color assembly (preview only, do not print)")
     render_voxel_preview(build, os.path.join(out_dir, MONO_VOXEL_FILES["preview"]))
 
     modules = []

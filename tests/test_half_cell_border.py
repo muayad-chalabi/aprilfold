@@ -8,8 +8,8 @@ import cv2
 import numpy as np
 import pytest
 
-from aprilcube import generate
-from aprilcube.detect import build_tag_corner_map, load_cube_config
+from aprilfold import generate
+from aprilfold.detect import build_tag_corner_map, load_cube_config
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -78,7 +78,7 @@ def test_cli_half_cell_border_regular_cuboid_matches_detector(tmp_path, monkeypa
         sys,
         "argv",
         [
-            "aprilcube generate",
+            "aprilfold generate",
             "--grid", "1x1x1",
             "--dict", "4x4_50",
             "--ids", "0-5",
@@ -107,7 +107,7 @@ def test_dense_t_half_cell_border_generation(tmp_path, monkeypatch):
     monkeypatch.setattr(
         sys,
         "argv",
-        ["aprilcube generate", str(DENSE_T_SPEC), "-o", str(out_dir)],
+        ["aprilfold generate", str(DENSE_T_SPEC), "-o", str(out_dir)],
     )
 
     generate.main()

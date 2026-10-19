@@ -1,6 +1,6 @@
 """Printed kinematic twin of a robot: one marker cube per link, joined by printed joints.
 
-Each link of a URDF becomes a single-color cube module (see :mod:`aprilcube.mono`),
+Each link of a URDF becomes a single-color cube module (see :mod:`aprilfold.mono`),
 the largest cube that fits inside the link's convex hull.  The cubes are
 connected by printed joint hardware placed exactly at the URDF joints, so
 the twin moves like the robot.  Tracking the cubes with a camera gives every
@@ -563,8 +563,8 @@ class LinkCube:
 
 def marker_layout(edge: float, dict_name: str, mono_cfg) -> MarkerLayout | None:
     """Smallest border that leaves room for the snap legs on a cube of this edge."""
-    from aprilcube import mono
-    from aprilcube.generate import DICT_MAP, TagPatternGenerator
+    from aprilfold import mono
+    from aprilfold.generate import DICT_MAP, TagPatternGenerator
 
     mp = TagPatternGenerator(DICT_MAP[dict_name]).marker_pixels
     for border in np.arange(1.0, 8.01, 0.5):
@@ -580,7 +580,7 @@ def marker_layout(edge: float, dict_name: str, mono_cfg) -> MarkerLayout | None:
 
 def min_module_edge(dict_name: str, mono_cfg, start: float = 15.0) -> float:
     """Smallest cube edge (0.5 mm steps) that makes a working mono module."""
-    from aprilcube import mono
+    from aprilfold import mono
 
     edge = start
     while edge < 200.0:
@@ -1335,7 +1335,7 @@ class TwinBuild:
 
     def bodies(self) -> dict[str, object]:
         """Each link's rigid body (cube plus connectors) in its link frame."""
-        from aprilcube import mono
+        from aprilfold import mono
 
         out = {}
         for name, link in self.links.items():
@@ -1348,7 +1348,7 @@ class TwinBuild:
 def _mount_plate(link: TwinLink, face_name: str):
     """Blank outer layer for a mount face, with the snap legs, in the link frame."""
     from manifold3d import CrossSection
-    from aprilcube import mono
+    from aprilfold import mono
 
     face = mono._faces()[face_name]
     half = link.dims.half
@@ -1435,8 +1435,8 @@ def build_twin(robot: Robot, dict_name: str, mono_cfg, ids: list[int] | None = N
 
 def _build_twin(robot: Robot, dict_name: str, mono_cfg, ids, samples, check_samples, seed,
                 strict: set[str]) -> TwinBuild:
-    from aprilcube import mono
-    from aprilcube.generate import DICT_MAP, TagPatternGenerator, build_face_grid
+    from aprilfold import mono
+    from aprilfold.generate import DICT_MAP, TagPatternGenerator, build_face_grid
 
     cubes = plan_cubes(robot, dict_name, mono_cfg, samples=samples, strict=strict)
     attached: dict[tuple[str, str], list] = {}
@@ -1606,7 +1606,7 @@ def _build_twin(robot: Robot, dict_name: str, mono_cfg, ids, samples, check_samp
 def _robot_solids(robot: Robot) -> dict[str, object]:
     """Each link's own meshes as one solid (its convex hull if the meshes are not closed)."""
     from manifold3d import Manifold, Mesh
-    from aprilcube import mono
+    from aprilfold import mono
 
     out = {}
     for name, link in robot.links.items():
@@ -1835,7 +1835,7 @@ COLORS = {"black": "#1A1A1A", "white": "#F2F2F2", "net": "#7FA7D9", "connector":
 
 def link_marker_config(build: TwinBuild, name: str) -> dict:
     """Detector config for one link: marker corners in the link frame (mm)."""
-    from aprilcube import generate
+    from aprilfold import generate
 
     link = build.links[name]
     lay, edge = link.cube.layout, link.cube.edge
@@ -1913,7 +1913,7 @@ def _flat_on_bed(part, down: np.ndarray):
 
 
 def render_twin_preview(build: TwinBuild, out_path: str) -> None:
-    from aprilcube import mono
+    from aprilfold import mono
     import cv2
 
     def scene(q):
@@ -1952,7 +1952,7 @@ def render_twin_preview(build: TwinBuild, out_path: str) -> None:
 def write_twin(build: TwinBuild, out_dir: str, source: str, scale: float) -> dict:
     """Write print files, per-link detector configs, twin.json, preview and README."""
     import json
-    from aprilcube import mono
+    from aprilfold import mono
 
     os.makedirs(out_dir, exist_ok=True)
     blacks, whites, nets, labels, net_labels = [], [], [], [], []
@@ -1971,13 +1971,13 @@ def write_twin(build: TwinBuild, out_dir: str, source: str, scale: float) -> dic
 
     mono.write_3mf(os.path.join(out_dir, TWIN_FILES["black"]),
                    [(f"black {lb}", p, COLORS["black"]) for lb, p in zip(labels, mono.arrange(blacks, grid_cols(len(blacks))))],
-                   "AprilCube twin: black lattices")
+                   "AprilFold twin: black lattices")
     mono.write_3mf(os.path.join(out_dir, TWIN_FILES["white"]),
                    [(f"white {lb}", p, COLORS["white"]) for lb, p in zip(labels, mono.arrange(whites, grid_cols(len(whites))))],
-                   "AprilCube twin: white plates")
+                   "AprilFold twin: white plates")
     mono.write_3mf(os.path.join(out_dir, TWIN_FILES["nets"]),
                    [(lb, p, COLORS["net"]) for lb, p in zip(net_labels, mono.arrange(nets, grid_cols(len(nets))))],
-                   "AprilCube twin: cube nets")
+                   "AprilFold twin: cube nets")
 
     connectors, connector_labels = [], []
     for name, link in build.links.items():
@@ -1989,13 +1989,13 @@ def write_twin(build: TwinBuild, out_dir: str, source: str, scale: float) -> dic
         mono.write_3mf(os.path.join(out_dir, TWIN_FILES["connectors"]),
                        [(lb, p, COLORS["connector"]) for lb, p in
                         zip(connector_labels, mono.arrange(connectors, grid_cols(len(connectors))))],
-                       "AprilCube twin: joint connectors (print with supports)")
+                       "AprilFold twin: joint connectors (print with supports)")
     hardware = [(name, printable) for name, _, _, printable in build.loose]
     if hardware:
         mono.write_3mf(os.path.join(out_dir, TWIN_FILES["hardware"]),
                        [(n, p, COLORS["hardware"]) for (n, _), p in
                         zip(hardware, mono.arrange([p for _, p in hardware], grid_cols(len(hardware))))],
-                       "AprilCube twin: bolts, nuts, caps and pins")
+                       "AprilFold twin: bolts, nuts, caps and pins")
 
     frames = build.robot.forward({})
     assembly = []
@@ -2012,7 +2012,7 @@ def write_twin(build: TwinBuild, out_dir: str, source: str, scale: float) -> dic
     floor = min(np.array(p.bounding_box())[2] for _, p, _ in assembly)
     mono.write_3mf(os.path.join(out_dir, TWIN_FILES["assembly"]),
                    [(n, p.translate((128.0, 128.0, -floor)), c) for n, p, c in assembly],
-                   "AprilCube twin assembly at the zero pose (preview only, do not print)")
+                   "AprilFold twin assembly at the zero pose (preview only, do not print)")
     render_twin_preview(build, os.path.join(out_dir, TWIN_FILES["preview"]))
 
     for name in build.links:
@@ -2097,7 +2097,7 @@ the joint angles. Scale: {record['scale']:g}.
 
 `twin.json` describes the kinematic chain (joint origins in mm, axes, limits)
 and each cube's pose in its link frame. `links/<link>/config.json` is a
-standard aprilcube detector config whose marker corners are given in that
+standard aprilfold detector config whose marker corners are given in that
 link's frame, so a detected pose is the link's pose.
 
 ## Checks
@@ -2115,10 +2115,10 @@ def main(argv: list[str] | None = None) -> None:
     import argparse
     import sys
 
-    from aprilcube.generate import DICT_MAP, MonoConfig, parse_ids
+    from aprilfold.generate import DICT_MAP, MonoConfig, parse_ids
 
     parser = argparse.ArgumentParser(
-        prog="aprilcube twin",
+        prog="aprilfold twin",
         description="Build a printed twin of a robot: one marker cube per link, joined by printed joints.",
         epilog="Example:\n  %(prog)s so101.urdf.xacro -o so101_twin --last-link wrist\n",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -2149,12 +2149,12 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_args(argv)
 
     try:
-        from aprilcube import mono
+        from aprilfold import mono
         mono.require_manifold()
         import scipy  # noqa: F401
         import trimesh  # noqa: F401
     except (ImportError, RuntimeError):
-        print("Error: aprilcube twin needs manifold3d, trimesh and scipy: pip install 'aprilcube[twin]'",
+        print("Error: aprilfold twin needs manifold3d, trimesh and scipy: pip install 'aprilfold[twin]'",
               file=sys.stderr)
         sys.exit(1)
     if args.scale <= 0:

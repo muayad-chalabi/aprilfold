@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<mujoco model="aprilcube_voxel_target">
+<mujoco model="aprilfold_voxel_target">
   <!-- Bounding box: 72 x 72 x 72 mm -->
   <!-- Origin at target center, units in meters -->
 

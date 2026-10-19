@@ -1,6 +1,6 @@
 # Tests
 
-Detection benchmark and integration tests for aprilcube. Renders the cube at known 6-DOF poses using synthetic images, runs the detector, and compares against ground truth.
+Detection benchmark and integration tests for aprilfold. Renders the cube at known 6-DOF poses using synthetic images, runs the detector, and compares against ground truth.
 
 ## Modes
 

@@ -2,7 +2,7 @@
   "use strict";
 
   const MAX_GRID_SIZE = 12;
-  const MARKER_DATA = window.APRILCUBE_MARKERS || {};
+  const MARKER_DATA = window.APRILFOLD_MARKERS || {};
   const DICTIONARIES = Object.entries(MARKER_DATA)
     .map(([name, data]) => ({
       name,
@@ -479,7 +479,7 @@
     } else if (!dictionary.ok) {
       setStatus("Adjust dictionary or marker sizing before downloading YAML.", true);
     } else {
-      setStatus(`Download YAML, then run: aprilcube generate ${sanitizeName(els.name.value)}.yaml`, false);
+      setStatus(`Download YAML, then run: aprilfold generate ${sanitizeName(els.name.value)}.yaml`, false);
     }
     updateLayerRailState();
   }
@@ -758,7 +758,7 @@
     link.click();
     link.remove();
     URL.revokeObjectURL(url);
-    setStatus(`Downloaded ${name}.yaml. Run: aprilcube generate ${name}.yaml`, false);
+    setStatus(`Downloaded ${name}.yaml. Run: aprilfold generate ${name}.yaml`, false);
     showCommandModal(name);
   }
 
@@ -766,9 +766,9 @@
     const yamlFile = `${name}.yaml`;
     const outputDir = `models/${name}`;
     const command = [
-      "python -m pip install aprilcube",
+      "python -m pip install aprilfold",
       "cd ~/Downloads",
-      `aprilcube generate ${yamlFile}`,
+      `aprilfold generate ${yamlFile}`,
     ].join("\n");
 
     els.modalSubtitle.textContent = `Assuming ${yamlFile} was saved to Downloads.`;
@@ -808,11 +808,11 @@
   }
 
   function sanitizeName(value) {
-    const cleaned = String(value || "aprilcube_target")
+    const cleaned = String(value || "aprilfold_target")
       .trim()
       .replace(/[^A-Za-z0-9._-]+/g, "_")
       .replace(/^[._-]+|[._-]+$/g, "");
-    return cleaned.slice(0, 80) || "aprilcube_target";
+    return cleaned.slice(0, 80) || "aprilfold_target";
   }
 
   function resizeViewport(view) {

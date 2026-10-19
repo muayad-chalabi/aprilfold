@@ -58,7 +58,7 @@ the joint angles. Scale: 1.
 
 `twin.json` describes the kinematic chain (joint origins in mm, axes, limits)
 and each cube's pose in its link frame. `links/<link>/config.json` is a
-standard aprilcube detector config whose marker corners are given in that
+standard aprilfold detector config whose marker corners are given in that
 link's frame, so a detected pose is the link's pose.
 
 ## Checks

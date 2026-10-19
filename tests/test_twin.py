@@ -8,8 +8,8 @@ pytest.importorskip("manifold3d")
 pytest.importorskip("trimesh")
 pytest.importorskip("scipy")
 
-from aprilcube import generate, twin  # noqa: E402
-from aprilcube.detect import load_cube_config  # noqa: E402
+from aprilfold import generate, twin  # noqa: E402
+from aprilfold.detect import load_cube_config  # noqa: E402
 
 DEMO = Path(__file__).parent / "data" / "twin_demo.urdf"
 
@@ -30,7 +30,7 @@ def _overlap(a, b):
 
 
 def _connectors(build, link):
-    from aprilcube import mono
+    from aprilfold import mono
     return mono._union(list(build.links[link].mounts.values()))
 
 

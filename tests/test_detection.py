@@ -22,7 +22,7 @@ import sys
 import cv2
 import numpy as np
 
-from aprilcube.generate import (
+from aprilfold.generate import (
     CubeConfig,
     DICT_MAP,
     FACE_DEFS,
@@ -33,7 +33,7 @@ from aprilcube.generate import (
     _camera_from_angles,
     _face_quad_corners,
 )
-from aprilcube.detect import CubePoseEstimator, load_cube_config
+from aprilfold.detect import CubePoseEstimator, load_cube_config
 
 
 # ═══════════════════════════════════════════════════════════════════════════

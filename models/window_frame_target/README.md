@@ -1,4 +1,4 @@
-# AprilCube Voxel Target
+# AprilFold Voxel Target
 
 ![Target preview](thumbnail.png)
 

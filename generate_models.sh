@@ -34,7 +34,7 @@ for entry in "${MODELS[@]}"; do
     name="${grid}_${tag_size}_cube"
     out="$MODELS_DIR/$name"
     echo "=== $name ==="
-    aprilcube generate \
+    aprilfold generate \
         --grid "$grid" \
         --dict "$DICT" \
         --tag-size "$tag_size" \
@@ -44,7 +44,7 @@ done
 
 # The robot calibration cube: 1x3x3, with the end-effector connector on +Z (see the README).
 echo "=== calibration_cube ==="
-aprilcube generate \
+aprilfold generate \
     --grid 1x3x3 \
     --dict 4x4_1000 \
     --tag-size 24 \

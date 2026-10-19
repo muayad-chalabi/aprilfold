@@ -5,8 +5,8 @@ import subprocess
 
 import pytest
 
-from aprilcube.generate import DICT_MAP, TagPatternGenerator
-from aprilcube.web.app import designer_path
+from aprilfold.generate import DICT_MAP, TagPatternGenerator
+from aprilfold.web.app import designer_path
 
 
 def test_static_designer_assets_are_standalone():
@@ -46,7 +46,7 @@ def test_marker_data_matches_python_generator_for_samples():
 
 def test_web_cli_no_open_prints_designer_path():
     result = subprocess.run(
-        ["aprilcube", "web", "--no-open"],
+        ["aprilfold", "web", "--no-open"],
         check=True,
         capture_output=True,
         text=True,
@@ -80,7 +80,7 @@ def test_designer_preserves_half_cell_borders():
 
 def _load_marker_data():
     marker_js = designer_path().with_name("marker-data.js").read_text(encoding="utf-8")
-    match = re.search(r"window\.APRILCUBE_MARKERS = (.*);\s*$", marker_js)
+    match = re.search(r"window\.APRILFOLD_MARKERS = (.*);\s*$", marker_js)
     assert match is not None
     return json.loads(match.group(1))
 

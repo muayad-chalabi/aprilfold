@@ -17,7 +17,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 
-import aprilcube
+import aprilfold
 import cv2
 import numpy as np
 
@@ -42,7 +42,7 @@ COLORS_BGR = [
 class Target:
     label: str
     config_path: Path
-    detector: aprilcube.CubePoseEstimator
+    detector: aprilfold.CubePoseEstimator
     color: tuple[int, int, int]
 
 
@@ -87,7 +87,7 @@ def load_targets(
 
     targets = []
     for idx, config_path in enumerate(config_paths):
-        det = aprilcube.detector(
+        det = aprilfold.detector(
             config_path,
             intrinsic_cfg=intrinsics,
             enable_filter=enable_filter,
@@ -353,7 +353,7 @@ def main():
             draw_target_overlay(vis, target, result)
         draw_status_panel(vis, results, fps_display)
 
-        cv2.imshow("AprilCube Detection", vis)
+        cv2.imshow("AprilFold Detection", vis)
         if cv2.waitKey(1) & 0xFF == ord("q"):
             break
 

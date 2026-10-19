@@ -1,4 +1,4 @@
-# AprilCube voxel target mesh
+# AprilFold voxel target mesh
 mtllib cube.mtl
 usemtl cube_material
 

@@ -607,7 +607,7 @@ def write_voxel_obj(
 
     mtl_name = os.path.basename(mtl_path)
     with open(mtl_path, "w") as f:
-        f.write("# AprilCube voxel target material\n")
+        f.write("# AprilFold voxel target material\n")
         f.write("newmtl cube_material\n")
         f.write("Ka 1.0 1.0 1.0\n")
         f.write("Kd 1.0 1.0 1.0\n")
@@ -647,7 +647,7 @@ def write_voxel_obj(
         )
 
     with open(obj_path, "w") as f:
-        f.write("# AprilCube voxel target mesh\n")
+        f.write("# AprilFold voxel target mesh\n")
         f.write(f"mtllib {mtl_name}\n")
         f.write("usemtl cube_material\n\n")
         for x, y, z in vertices:
@@ -721,7 +721,7 @@ def write_voxel_mujoco_xml(
 
     xml = (
         '<?xml version="1.0" encoding="UTF-8"?>\n'
-        '<mujoco model="aprilcube_voxel_target">\n'
+        '<mujoco model="aprilfold_voxel_target">\n'
         f'  <!-- Bounding box: {bx:.4g} x {by:.4g} x {bz:.4g} mm -->\n'
         '  <!-- Origin at target center, units in meters -->\n'
         '\n'
@@ -1481,7 +1481,7 @@ class ThreeMFWriter:
             '       xmlns:BambuStudio="http://schemas.bambulab.com/package/2021">\n'
             '  <metadata name="BambuStudio:3mfVersion">1</metadata>\n'
             f'  <metadata name="Application">{BAMBU_STUDIO_APPLICATION}</metadata>\n'
-            '  <metadata name="Title">AprilCube generated target</metadata>\n'
+            '  <metadata name="Title">AprilFold generated target</metadata>\n'
             '  <resources>\n'
             f'    <object id="2" p:UUID="{uuid4()}" type="model">\n'
             '      <components>\n'
@@ -1509,7 +1509,7 @@ class ThreeMFWriter:
         )
         lines.append('  <metadata name="BambuStudio:3mfVersion">1</metadata>')
         lines.append(f'  <metadata name="Application">{BAMBU_STUDIO_APPLICATION}</metadata>')
-        lines.append('  <metadata name="Title">AprilCube generated target</metadata>')
+        lines.append('  <metadata name="Title">AprilFold generated target</metadata>')
         lines.append("  <resources>")
         lines.append(f'    <object id="1" p:UUID="{uuid4()}" type="model">')
         lines.append("      <mesh>")
@@ -2246,7 +2246,7 @@ def write_voxel_readme(config_data: dict, out_dir: str) -> None:
                 ("preview", "Assembled, exploded, joint, and net views"),
             ] if key in files
         )
-    md = f"""# AprilCube Voxel Target
+    md = f"""# AprilFold Voxel Target
 
 ![Target preview](thumbnail.png)
 
@@ -2409,7 +2409,7 @@ regenerate with `--mono-clearance` (current: {mono['fit_clearance_mm']:.4g} mm p
 ## Regenerate
 
 ```bash
-aprilcube generate --grid {grid_str} --dict {config.dict_name} --tag-size {config.tag_size_mm:.4g} --margin-cell {config.margin_cells} --border-cell {config.border_cells}{attachment_args}{mono_args} -o {os.path.basename(out_dir)}
+aprilfold generate --grid {grid_str} --dict {config.dict_name} --tag-size {config.tag_size_mm:.4g} --margin-cell {config.margin_cells} --border-cell {config.border_cells}{attachment_args}{mono_args} -o {os.path.basename(out_dir)}
 ```
 """
     readme_path = os.path.join(out_dir, "README.md")
@@ -2508,7 +2508,7 @@ def generate_voxel_target(
     needed = len(exposed)
     mono = spec.mono if spec.mono is not None and spec.mono.enabled else None
     if mono is not None:
-        from aprilcube import mono as mono_build
+        from aprilfold import mono as mono_build
         mono_build.require_manifold()
     if mono is not None and spec.ids is None:
         # Skip markers whose black pixels would print as loose pieces.
@@ -2837,7 +2837,7 @@ def main():
     needed = config.total_tags()
     tag_gen = TagPatternGenerator(dict_id)
     if mono is not None:
-        from aprilcube import mono as mono_build
+        from aprilfold import mono as mono_build
         try:
             mono_build.require_manifold()
         except RuntimeError as exc:

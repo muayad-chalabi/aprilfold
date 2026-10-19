@@ -1,8 +1,8 @@
-"""aprilcube - Generate and detect ArUco/AprilTag cubes for 6-DOF pose estimation."""
+"""aprilfold - foldable single-color fiducial cubes and printed robot twins for 6-DoF pose tracking."""
 
 from __future__ import annotations
 
-__version__ = "0.3.1"
+__version__ = "0.1.0"
 
 import json
 from pathlib import Path
@@ -10,8 +10,8 @@ from typing import Union
 
 import numpy as np
 
-from aprilcube.generate import CubeConfig, DICT_MAP, FACE_DEFS
-from aprilcube.detect import (
+from aprilfold.generate import CubeConfig, DICT_MAP, FACE_DEFS
+from aprilfold.detect import (
     CubePoseEstimator,
     KalmanFilterConfig,
     KalmanPoseFilter,
@@ -49,7 +49,7 @@ def detector(
     """Create a CubePoseEstimator from config file paths or inline parameters.
 
     Args:
-        cube_cfg: Path to config.json produced by ``aprilcube generate``.
+        cube_cfg: Path to config.json produced by ``aprilfold generate``.
             When a file path is given, its parent directory is used to locate
             the 3D model (``mujoco/cube.obj``) for viser visualization.
         intrinsic_cfg: Camera intrinsics, one of:
@@ -72,13 +72,13 @@ def detector(
 
     Examples::
 
-        import aprilcube
+        import aprilfold
 
-        det = aprilcube.detector("my_cube/config.json", "calib.json")
+        det = aprilfold.detector("my_cube/config.json", "calib.json")
         result = det.process_frame(frame)
 
         # With viser visualization
-        det = aprilcube.detector(
+        det = aprilfold.detector(
             "my_cube/config.json",
             {"fx": 800, "fy": 800, "cx": 320, "cy": 240},
         )

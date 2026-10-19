@@ -17,7 +17,7 @@ from typing import NamedTuple
 import cv2
 import numpy as np
 
-from aprilcube.generate import CubeConfig, DICT_MAP, FACE_DEFS
+from aprilfold.generate import CubeConfig, DICT_MAP, FACE_DEFS
 
 
 # ---------------------------------------------------------------------------
@@ -28,7 +28,7 @@ def load_cube_config(path: str) -> tuple[CubeConfig, dict[str, set[int]]]:
     with open(path) as f:
         data = json.load(f)
 
-    from aprilcube.generate import parse_grid
+    from aprilfold.generate import parse_grid
     gx, gy, gz = parse_grid(data["grid"])
     dict_id = DICT_MAP[data["dict"]]
     marker_corners = None
@@ -1478,7 +1478,7 @@ class CubePoseEstimator:
         self._async_pending_lock = threading.Lock()
         self._async_pending_event = threading.Event()
         self._async_thread = threading.Thread(
-            target=self._async_worker, daemon=True, name="aprilcube-async",
+            target=self._async_worker, daemon=True, name="aprilfold-async",
         )
         self._async_thread.start()
 
@@ -1608,7 +1608,7 @@ class CubePoseEstimator:
         )
 
         # GUI sidebar
-        server.gui.set_panel_label("AprilCube")
+        server.gui.set_panel_label("AprilFold")
         cam_folder = server.gui.add_folder("Camera Feed")
         with cam_folder:
             self._viser_gui_image = server.gui.add_image(

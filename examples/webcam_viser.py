@@ -15,7 +15,7 @@ Usage:
 import argparse
 import time
 
-import aprilcube
+import aprilfold
 import numpy as np
 from pycaas import PycaasClient
 from robot_descriptions.loaders.yourdfpy import load_robot_description
@@ -63,7 +63,7 @@ def main():
     print(f"Intrinsics: fx={K[0,0]:.1f} fy={K[1,1]:.1f} cx={K[0,2]:.1f} cy={K[1,2]:.1f}")
     print(f"Expected cx~{frame.shape[1]/2:.1f} cy~{frame.shape[0]/2:.1f}")
 
-    det = aprilcube.detector(
+    det = aprilfold.detector(
         args.cube,
         intrinsic_cfg = K,
         extrinsic = ext,
